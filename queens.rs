@@ -10,12 +10,8 @@ pub trait NQueensStrategy: Sized {
     fn new(dimension: usize, config: Self::Config) -> Self;
 
     /// Solves the challenge for returning a vector with `n` positions,
-    /// indicated as a vector into an array of dimension * dimension.
-    ///
-    /// Each step will call step_callback, if appropriate, with the current
-    /// state of the board.
-    fn solve<F>(self, step_callback: F) -> Option<Vec<(usize, usize)>>
-        where F: FnMut(&[(usize, usize)]);
+    /// representing the column at which the queen is positioned for each index.
+    fn solve(self) -> Option<Box<[usize]>>;
 }
 
 pub mod hill_climbing {
@@ -24,7 +20,9 @@ pub mod hill_climbing {
     /// A hill-climbing solution to the n-queens challenge
     pub struct HillClimbing {
         size: usize,
-        positions: Vec<(usize, usize)>,
+        /// NOTE: We already know the row they are, because all the queens must
+        /// necessarily be in a different one.
+        queen_rows: Vec<usize>,
     }
 
     enum PositionError {
@@ -73,42 +71,25 @@ pub mod hill_climbing {
 
         fn queen_can_be_positioned_at(&self,
                                       pos: (usize, usize))
-                                      -> Result<(), PositionError> {
-            for existing_position in &self.positions {
-                if let Err(err) = self.can_position(pos, *existing_position) {
-                    return Err(err);
+                                      -> bool {
+            for (x, &y) in self.queen_rows.iter().enumerate() {
+                if self.can_position(pos, (x, y)).is_err() {
+                    return false;
                 }
             }
 
-            Ok(())
+            true
         }
 
-        /// Tries to position the next queen in a greedy way. Gets an immutable
-        /// view of the current positions, and returns the position the next
-        /// queen is at, or an error if it can't be positioned.
-        fn position_next_queen_starting_from(&self,
-                                             (mut x, mut y): (usize, usize))
-                                             -> Result<(usize, usize), ()> {
-            while x < self.size && y < self.size {
-                match self.queen_can_be_positioned_at((x, y)) {
-                    Ok(()) => return Ok((x, y)),
-                    Err(PositionError::Match) => {
-                        x += 1;
-                        y = 0;
-                    }
-                    Err(PositionError::Column) => {
-                        x += 1;
-                    }
-                    Err(PositionError::Diagonal) |
-                    Err(PositionError::Row) => {
-                        if y == self.size - 1 {
-                            y = 0;
-                            x += 1;
-                        } else {
-                            y += 1;
-                        }
-                    }
+        /// Tries to position the next queen at row `row`, or any of the
+        /// following columns.
+        fn position_next_queen_from_row(&self, mut row: usize)
+                                        -> Result<usize, ()> {
+            while row < self.size {
+                if self.queen_can_be_positioned_at((self.queen_rows.len(), row)) {
+                    return Ok(row);
                 }
+                row += 1;
             }
 
             Err(())
@@ -122,34 +103,26 @@ pub mod hill_climbing {
         fn new(dimensions: usize, _: ()) -> Self {
             HillClimbing {
                 size: dimensions,
-                positions: Vec::with_capacity(dimensions),
+                queen_rows: Vec::with_capacity(dimensions),
             }
         }
 
-        fn solve<F>(mut self, mut step_callback: F) -> Option<Vec<(usize, usize)>>
-            where F: FnMut(&[(usize, usize)]),
-        {
+        fn solve(mut self) -> Option<Box<[usize]>> {
             if self.dimension() == 0 {
-                return Some(vec![]);
+                return Some(vec![].into_boxed_slice());
             }
 
-            let mut start_search_at = (0, 0);
-            while self.positions.len() != self.dimension() {
-                match self.position_next_queen_starting_from(start_search_at) {
+            let mut start_search_at = 0;
+            while self.queen_rows.len() != self.dimension() {
+                match self.position_next_queen_from_row(start_search_at) {
                     Ok(pos) => {
-                        self.positions.push(pos);
-                        step_callback(&self.positions);
-                        start_search_at = (0, 0);
+                        self.queen_rows.push(pos);
+                        start_search_at = 0;
                     }
                     Err(()) => {
-                        match self.positions.pop() {
-                            Some((x, y)) => {
-                                start_search_at =
-                                    if y == self.size - 1 {
-                                        (x + 1, 0)
-                                    } else {
-                                        (x, y + 1)
-                                    };
+                        match self.queen_rows.pop() {
+                            Some(row) => {
+                                start_search_at = row + 1;
                             }
                             // No solution.
                             None => return None,
@@ -158,7 +131,7 @@ pub mod hill_climbing {
                 }
             }
 
-            return Some(self.positions);
+            return Some(self.queen_rows.into_boxed_slice());
         }
     }
 
@@ -185,24 +158,22 @@ pub mod hill_climbing {
         #[test]
         fn finds_eight_queens_solution() {
             let challenge = HillClimbing::new(DIM, ());
-            assert!(challenge.solve(|_| {}).is_some());
+            assert!(challenge.solve().is_some());
         }
 
         #[test]
         fn finds_twelve_queens_solution() {
             let challenge = HillClimbing::new(12, ());
-            assert!(challenge.solve(|_| {}).is_some());
+            assert!(challenge.solve().is_some());
         }
 
         #[test]
         fn finds_fifteen_queens_solution() {
             let challenge = HillClimbing::new(15, ());
-            assert!(challenge.solve(|_| {}).is_some());
+            assert!(challenge.solve().is_some());
         }
     }
 }
-
-pub type JSCallback = extern "C" fn(positions: *const usize, len: usize);
 
 pub fn solve<T: NQueensStrategy>(n: usize,
                                  result_storage: *mut usize,
@@ -212,12 +183,7 @@ pub fn solve<T: NQueensStrategy>(n: usize,
     use std::slice;
 
     let challenge = T::new(n, config);
-    let result = challenge.solve(|_step| {
-        // FIXME(emilio): Invoke callback, but I don't need it right now.
-        // if let Some(cb) = callback {
-        //     cb(step.as_ptr(), step.len());
-        // }
-    });
+    let result = challenge.solve();
 
     let result = match result {
         Some(result) => result,
@@ -225,8 +191,8 @@ pub fn solve<T: NQueensStrategy>(n: usize,
     };
 
     let mut storage = unsafe { slice::from_raw_parts_mut(result_storage, n) };
-    for (i, (x, y)) in result.into_iter().enumerate() {
-        storage[i] = x + y * n;
+    for (x, y) in result.into_iter().enumerate() {
+        storage[x] = x + y * n;
     }
 
     return 1;
@@ -235,6 +201,9 @@ pub fn solve<T: NQueensStrategy>(n: usize,
 #[cfg(not(test))]
 #[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_hill_climbing'] -s RESERVED_FUNCTION_POINTERS=20"]
 extern {}
+
+// TODO(emilio): Get rid of this.
+pub type JSCallback = extern "C" fn(positions: *const usize, len: usize);
 
 #[no_mangle]
 pub fn solve_n_queens_hill_climbing(n: usize,
