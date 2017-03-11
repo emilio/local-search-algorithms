@@ -151,6 +151,12 @@ pub mod hill_climbing {
             let mut challenge = HillClimbing::new(DIM, ());
             assert!(challenge.solve(|_| {}).is_some());
         }
+
+        #[test]
+        fn finds_twelve_queens_solution() {
+            let mut challenge = HillClimbing::new(12, ());
+            assert!(challenge.solve(|_| {}).is_some());
+        }
     }
 }
 

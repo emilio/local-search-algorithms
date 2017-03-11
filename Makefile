@@ -1,17 +1,20 @@
 
 .PHONY: all
-all: queens.js
+all: index.html queens.js application.js
 	@echo > /dev/null
 
 queens.js: queens.rs
-	rustc --target=asmjs-unknown-emscripten $< -o $@
+	rustc --target=asmjs-unknown-emscripten -O $< -o $@
+
+application.js: application.ts
+	tsc --module amd $< --outFile $@
 
 .PHONY: test
 test: queens
 	./queens
 
 queens: queens.rs
-	rustc --test $< -o $@
+	rustc --test -O $< -o $@
 
 
 .PHONY: setup
