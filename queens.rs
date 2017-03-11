@@ -1,3 +1,4 @@
+#![feature(link_args)]
 
 /// A problem-solving strategy for the n-queens problem.
 pub trait NQueensStrategy: Sized {
@@ -138,6 +139,34 @@ pub mod hill_climbing {
             assert!(challenge.solve().is_some());
         }
     }
+}
+
+#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_hill_climbing']"]
+extern {}
+
+fn solve<T: NQueensStrategy>(n: usize, config: T::Config) -> Option<Vec<usize>> {
+    let mut challenge = T::new(n, config);
+    challenge.solve()
+}
+
+#[no_mangle]
+pub fn solve_n_queens_hill_climbing(n: usize, result_storage: *mut u32) -> usize {
+    use std::{mem, slice};
+
+    assert_eq!(mem::size_of::<usize>(), mem::size_of::<u32>());
+
+    let result = solve::<hill_climbing::HillClimbing>(n, ());
+    let result = match result {
+        Some(result) => result,
+        None => return 0,
+    };
+
+    let mut storage = unsafe { slice::from_raw_parts_mut(result_storage, n) };
+    for (i, pos) in result.into_iter().enumerate() {
+        storage[i] = pos as u32;
+    }
+
+    return 1;
 }
 
 fn main() { /* Intentionally empty */ }

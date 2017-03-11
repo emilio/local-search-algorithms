@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Local search algorithms</title>
+<script src="queens.js"></script>
+<script>
+window.solve_hill_climbing = (function() {
+  var _real_hill_climbing = Module.cwrap('solve_n_queens_hill_climbing', 'number', ['number', 'number']);
+
+  return function(n) {
+    var mem = Module._malloc(n * 4);
+    var solution_found = _real_hill_climbing(n, mem);
+    if (!solution_found) {
+      Module._free(mem);
+      return null;
+    }
+    var ret = new Uint32Array(n);
+    for (var i = 0; i < n; i++)
+      ret[i] = Module.getValue(mem + i * 4, 'i32');
+
+    Module._free(mem);
+    return ret;
+  }
+}());
+</script>
