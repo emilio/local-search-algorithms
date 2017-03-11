@@ -1,5 +1,11 @@
 #![feature(link_args)]
 
+#[allow(dead_code)]
+#[cfg(not(test))]
+fn static_assert() {
+    unsafe { ::std::mem::transmute::<u32, usize>(1u32) };
+}
+
 /// A problem-solving strategy for the n-queens problem.
 pub trait NQueensStrategy: Sized {
     /// Extra parameters that may be given to the challenge to configure the
@@ -11,7 +17,11 @@ pub trait NQueensStrategy: Sized {
 
     /// Solves the challenge for returning a vector with `n` positions,
     /// indicated as a vector into an array of dimension * dimension.
-    fn solve(&mut self) -> Option<Vec<usize>>;
+    ///
+    /// Each step will call step_callback, if appropriate, with the current
+    /// state of the board.
+    fn solve<F>(&mut self, step_callback: F) -> Option<Vec<usize>>
+        where F: FnMut(&[usize]);
 }
 
 pub mod hill_climbing {
@@ -83,7 +93,9 @@ pub mod hill_climbing {
             HillClimbing(dimensions)
         }
 
-        fn solve(&mut self) -> Option<Vec<usize>> {
+        fn solve<F>(&mut self, mut step_callback: F) -> Option<Vec<usize>>
+            where F: FnMut(&[usize]),
+        {
             if self.dimension() == 0 {
                 return Some(vec![]);
             }
@@ -95,6 +107,7 @@ pub mod hill_climbing {
                 match self.position_next_queen_starting_from(start_search_at, &positions) {
                     Ok(pos) => {
                         positions.push(pos);
+                        step_callback(&positions);
                         start_search_at = 0;
                     }
                     Err(()) => {
@@ -136,26 +149,29 @@ pub mod hill_climbing {
         #[test]
         fn finds_eight_queens_solution() {
             let mut challenge = HillClimbing::new(DIM, ());
-            assert!(challenge.solve().is_some());
+            assert!(challenge.solve(|_| {}).is_some());
         }
     }
 }
 
-#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_hill_climbing']"]
-extern {}
+pub type JSCallback = extern "C" fn(positions: *const usize, len: usize);
 
-fn solve<T: NQueensStrategy>(n: usize, config: T::Config) -> Option<Vec<usize>> {
-    let mut challenge = T::new(n, config);
-    challenge.solve()
-}
-
-#[no_mangle]
-pub fn solve_n_queens_hill_climbing(n: usize, result_storage: *mut u32) -> usize {
+pub fn solve<T: NQueensStrategy>(n: usize,
+                                 result_storage: *mut u32,
+                                 callback: Option<JSCallback>,
+                                 config: T::Config)
+                                 -> usize {
     use std::{mem, slice};
+
+    let mut challenge = T::new(n, config);
+    let result = challenge.solve(|step| {
+        if let Some(cb) = callback {
+            cb(step.as_ptr(), step.len());
+        }
+    });
 
     assert_eq!(mem::size_of::<usize>(), mem::size_of::<u32>());
 
-    let result = solve::<hill_climbing::HillClimbing>(n, ());
     let result = match result {
         Some(result) => result,
         None => return 0,
@@ -167,6 +183,18 @@ pub fn solve_n_queens_hill_climbing(n: usize, result_storage: *mut u32) -> usize
     }
 
     return 1;
+}
+
+#[cfg(not(test))]
+#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_hill_climbing'] -s RESERVED_FUNCTION_POINTERS=20"]
+extern {}
+
+#[no_mangle]
+pub fn solve_n_queens_hill_climbing(n: usize,
+                                    result_storage: *mut u32,
+                                    cb: Option<JSCallback>)
+                                    -> usize {
+    solve::<hill_climbing::HillClimbing>(n, result_storage, cb, ())
 }
 
 fn main() { /* Intentionally empty */ }

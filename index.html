@@ -6,17 +6,29 @@
 window.solve_hill_climbing = (function() {
   var _real_hill_climbing = Module.cwrap('solve_n_queens_hill_climbing', 'number', ['number', 'number']);
 
-  return function(n) {
-    var mem = Module._malloc(n * 4);
-    var solution_found = _real_hill_climbing(n, mem);
-    if (!solution_found) {
-      Module._free(mem);
-      return null;
+  return function(n, callback) {
+    var js_callback = 0;
+    if (callback) {
+      js_callback = Runtime.addFunction(function(ptr, len) {
+        var current_state = new Uint32Array(len);
+        for (var i = 0; i < len; ++i)
+          current_state[i] = Module.getValue(ptr + i * 4, 'i32');
+        callback(current_state);
+      });
     }
-    var ret = new Uint32Array(n);
-    for (var i = 0; i < n; i++)
-      ret[i] = Module.getValue(mem + i * 4, 'i32');
 
+    var mem = Module._malloc(n * 4);
+    var solution_found = _real_hill_climbing(n, mem, js_callback);
+    var ret = null;
+
+    if (solution_found) {
+      ret = new Uint32Array(n);
+      for (var i = 0; i < n; ++i)
+        ret[i] = Module.getValue(mem + i * 4, 'i32');
+    }
+
+    if (js_callback)
+      Runtime.removeFunction(js_callback);
     Module._free(mem);
     return ret;
   }
