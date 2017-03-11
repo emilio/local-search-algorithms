@@ -1,11 +1,5 @@
 #![feature(link_args)]
 
-#[allow(dead_code)]
-#[cfg(not(test))]
-fn static_assert() {
-    unsafe { ::std::mem::transmute::<u32, usize>(1u32) };
-}
-
 /// A problem-solving strategy for the n-queens problem.
 pub trait NQueensStrategy: Sized {
     /// Extra parameters that may be given to the challenge to configure the
@@ -20,64 +14,100 @@ pub trait NQueensStrategy: Sized {
     ///
     /// Each step will call step_callback, if appropriate, with the current
     /// state of the board.
-    fn solve<F>(&mut self, step_callback: F) -> Option<Vec<usize>>
-        where F: FnMut(&[usize]);
+    fn solve<F>(self, step_callback: F) -> Option<Vec<(usize, usize)>>
+        where F: FnMut(&[(usize, usize)]);
 }
 
 pub mod hill_climbing {
     use super::*;
 
-    /// The id of a queen, which is effectively an index.
-    pub type QueenId = usize;
-
     /// A hill-climbing solution to the n-queens challenge
-    pub struct HillClimbing(usize);
+    pub struct HillClimbing {
+        size: usize,
+        positions: Vec<(usize, usize)>,
+    }
+
+    enum PositionError {
+        /// A queen is already there.
+        Match,
+        /// Queen in the same column.
+        Column,
+        /// Queen in the same row.
+        Row,
+        /// Queen in the same diagonal.
+        Diagonal,
+    }
 
     impl HillClimbing {
         fn dimension(&self) -> usize {
-            self.0
+            self.size
         }
 
         /// Returns true if a queen positioned at `one` could be hit by a queen
         /// positioned at `other`.
-        fn positions_are_reachable(&self, one: usize, other: usize) -> bool {
-            let (x1, y1) = (one % self.dimension(), one / self.dimension());
-            let (x2, y2) = (other % self.dimension(), other / self.dimension());
+        fn can_position(&self,
+                        (x1, y1): (usize, usize),
+                        (x2, y2): (usize, usize))
+                        -> Result<(), PositionError> {
+            if x1 == x2 && y1 == y2 {
+                return Err(PositionError::Match);
+            }
 
-            if x1 == x2 || y1 == y2 {
-                return true; // aligned
+            if x1 == x2 {
+                return Err(PositionError::Column);
+            }
+
+            if y1 == y2 {
+                return Err(PositionError::Row);
             }
 
             let x_difference = (x1 as isize - x2 as isize).abs();
             let y_difference = (y1 as isize - y2 as isize).abs();
 
             if x_difference == y_difference {
-                return true; // diagonal
+                return Err(PositionError::Diagonal);
             }
 
-            false
+            Ok(())
         }
 
-        fn queen_can_be_positioned_at(&self, pos: usize, queen_positions: &[usize]) -> bool {
-            for existing_position in queen_positions {
-                if pos == *existing_position || self.positions_are_reachable(pos, *existing_position) {
-                    return false;
+        fn queen_can_be_positioned_at(&self,
+                                      pos: (usize, usize))
+                                      -> Result<(), PositionError> {
+            for existing_position in &self.positions {
+                if let Err(err) = self.can_position(pos, *existing_position) {
+                    return Err(err);
                 }
             }
 
-            true
+            Ok(())
         }
 
         /// Tries to position the next queen in a greedy way. Gets an immutable
         /// view of the current positions, and returns the position the next
         /// queen is at, or an error if it can't be positioned.
         fn position_next_queen_starting_from(&self,
-                                             initial: usize,
-                                             queen_positions: &[usize])
-                                             -> Result<usize, ()> {
-            for pos in initial..(self.dimension() * self.dimension()) {
-                if self.queen_can_be_positioned_at(pos, queen_positions) {
-                    return Ok(pos)
+                                             (mut x, mut y): (usize, usize))
+                                             -> Result<(usize, usize), ()> {
+            while x < self.size && y < self.size {
+                match self.queen_can_be_positioned_at((x, y)) {
+                    Ok(()) => return Ok((x, y)),
+                    Err(PositionError::Match) => {
+                        x += 1;
+                        y = 0;
+                    }
+                    Err(PositionError::Column) => {
+                        x += 1;
+                    }
+                    Err(PositionError::Diagonal) |
+                    Err(PositionError::Row) => {
+                        if y == self.size - 1 {
+                            y = 0;
+                            x += 1;
+                        } else {
+                            y += 1;
+                        }
+                    }
                 }
             }
 
@@ -90,30 +120,36 @@ pub mod hill_climbing {
         type Config = ();
 
         fn new(dimensions: usize, _: ()) -> Self {
-            HillClimbing(dimensions)
+            HillClimbing {
+                size: dimensions,
+                positions: Vec::with_capacity(dimensions),
+            }
         }
 
-        fn solve<F>(&mut self, mut step_callback: F) -> Option<Vec<usize>>
-            where F: FnMut(&[usize]),
+        fn solve<F>(mut self, mut step_callback: F) -> Option<Vec<(usize, usize)>>
+            where F: FnMut(&[(usize, usize)]),
         {
             if self.dimension() == 0 {
                 return Some(vec![]);
             }
 
-            let mut positions = vec![];
-
-            let mut start_search_at = 0;
-            while positions.len() != self.dimension() {
-                match self.position_next_queen_starting_from(start_search_at, &positions) {
+            let mut start_search_at = (0, 0);
+            while self.positions.len() != self.dimension() {
+                match self.position_next_queen_starting_from(start_search_at) {
                     Ok(pos) => {
-                        positions.push(pos);
-                        step_callback(&positions);
-                        start_search_at = 0;
+                        self.positions.push(pos);
+                        step_callback(&self.positions);
+                        start_search_at = (0, 0);
                     }
                     Err(()) => {
-                        match positions.pop() {
-                            Some(last_queen_position) => {
-                                start_search_at = last_queen_position + 1;
+                        match self.positions.pop() {
+                            Some((x, y)) => {
+                                start_search_at =
+                                    if y == self.size - 1 {
+                                        (x + 1, 0)
+                                    } else {
+                                        (x, y + 1)
+                                    };
                             }
                             // No solution.
                             None => return None,
@@ -122,7 +158,7 @@ pub mod hill_climbing {
                 }
             }
 
-            return Some(positions);
+            return Some(self.positions);
         }
     }
 
@@ -131,30 +167,36 @@ pub mod hill_climbing {
         use super::*;
 
         const DIM: usize = 8;
-        fn pos(x: usize, y: usize) -> usize {
-            x + y * DIM
+        fn pos(x: usize, y: usize) -> (usize, usize) {
+            (x, y)
         }
 
         #[test]
         fn are_reachable_test() {
             let challenge = HillClimbing::new(DIM, ());
 
-            assert!(challenge.positions_are_reachable(pos(0, 0), pos(0, 0)));
-            assert!(challenge.positions_are_reachable(pos(0, 1), pos(0, 0)));
-            assert!(challenge.positions_are_reachable(pos(1, 0), pos(0, 0)));
-            assert!(challenge.positions_are_reachable(pos(1, 1), pos(5, 5)));
-            assert!(challenge.positions_are_reachable(pos(3, 2), pos(2, 3)));
+            assert!(challenge.can_position(pos(0, 0), pos(0, 0)).is_err());
+            assert!(challenge.can_position(pos(0, 1), pos(0, 0)).is_err());
+            assert!(challenge.can_position(pos(1, 0), pos(0, 0)).is_err());
+            assert!(challenge.can_position(pos(1, 1), pos(5, 5)).is_err());
+            assert!(challenge.can_position(pos(3, 2), pos(2, 3)).is_err());
         }
 
         #[test]
         fn finds_eight_queens_solution() {
-            let mut challenge = HillClimbing::new(DIM, ());
+            let challenge = HillClimbing::new(DIM, ());
             assert!(challenge.solve(|_| {}).is_some());
         }
 
         #[test]
         fn finds_twelve_queens_solution() {
-            let mut challenge = HillClimbing::new(12, ());
+            let challenge = HillClimbing::new(12, ());
+            assert!(challenge.solve(|_| {}).is_some());
+        }
+
+        #[test]
+        fn finds_fifteen_queens_solution() {
+            let challenge = HillClimbing::new(15, ());
             assert!(challenge.solve(|_| {}).is_some());
         }
     }
@@ -163,20 +205,19 @@ pub mod hill_climbing {
 pub type JSCallback = extern "C" fn(positions: *const usize, len: usize);
 
 pub fn solve<T: NQueensStrategy>(n: usize,
-                                 result_storage: *mut u32,
-                                 callback: Option<JSCallback>,
+                                 result_storage: *mut usize,
+                                 _callback: Option<JSCallback>,
                                  config: T::Config)
                                  -> usize {
-    use std::{mem, slice};
+    use std::slice;
 
-    let mut challenge = T::new(n, config);
-    let result = challenge.solve(|step| {
-        if let Some(cb) = callback {
-            cb(step.as_ptr(), step.len());
-        }
+    let challenge = T::new(n, config);
+    let result = challenge.solve(|_step| {
+        // FIXME(emilio): Invoke callback, but I don't need it right now.
+        // if let Some(cb) = callback {
+        //     cb(step.as_ptr(), step.len());
+        // }
     });
-
-    assert_eq!(mem::size_of::<usize>(), mem::size_of::<u32>());
 
     let result = match result {
         Some(result) => result,
@@ -184,8 +225,8 @@ pub fn solve<T: NQueensStrategy>(n: usize,
     };
 
     let mut storage = unsafe { slice::from_raw_parts_mut(result_storage, n) };
-    for (i, pos) in result.into_iter().enumerate() {
-        storage[i] = pos as u32;
+    for (i, (x, y)) in result.into_iter().enumerate() {
+        storage[i] = x + y * n;
     }
 
     return 1;
@@ -197,7 +238,7 @@ extern {}
 
 #[no_mangle]
 pub fn solve_n_queens_hill_climbing(n: usize,
-                                    result_storage: *mut u32,
+                                    result_storage: *mut usize,
                                     cb: Option<JSCallback>)
                                     -> usize {
     solve::<hill_climbing::HillClimbing>(n, result_storage, cb, ())
