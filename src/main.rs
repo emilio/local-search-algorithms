@@ -79,18 +79,18 @@ pub trait NQueensStrategy: Sized {
     }
 }
 
-pub mod hill_climbing {
+pub mod constraint_propagation {
     use super::*;
 
-    /// A hill-climbing solution to the n-queens challenge
-    pub struct HillClimbing {
+    /// A constraint-propagation solution to the n-queens challenge.
+    pub struct ConstraintPropagation {
         size: usize,
         /// NOTE: We already know the row they are, because all the queens must
         /// necessarily be in a different one.
         queen_rows: Vec<usize>,
     }
 
-    impl HillClimbing {
+    impl ConstraintPropagation {
         fn dimension(&self) -> usize {
             self.size
         }
@@ -110,12 +110,12 @@ pub mod hill_climbing {
         }
     }
 
-    impl NQueensStrategy for HillClimbing {
+    impl NQueensStrategy for ConstraintPropagation {
         /// No configuration needed.
         type Config = ();
 
         fn new(dimensions: usize, _: ()) -> Self {
-            HillClimbing {
+            ConstraintPropagation {
                 size: dimensions,
                 queen_rows: Vec::with_capacity(dimensions),
             }
@@ -170,7 +170,7 @@ pub mod hill_climbing {
 
         #[test]
         fn are_reachable_test() {
-            let challenge = HillClimbing::new(DIM, ());
+            let challenge = ConstraintPropagation::new(DIM, ());
 
             assert!(challenge.can_position(pos(0, 0), pos(0, 0)).is_err());
             assert!(challenge.can_position(pos(0, 1), pos(0, 0)).is_err());
@@ -181,19 +181,19 @@ pub mod hill_climbing {
 
         #[test]
         fn finds_eight_queens_solution() {
-            let challenge = HillClimbing::new(DIM, ());
+            let challenge = ConstraintPropagation::new(DIM, ());
             assert!(challenge.solve().is_some());
         }
 
         #[test]
         fn finds_twelve_queens_solution() {
-            let challenge = HillClimbing::new(12, ());
+            let challenge = ConstraintPropagation::new(12, ());
             assert!(challenge.solve().is_some());
         }
 
         #[test]
         fn finds_fifteen_queens_solution() {
-            let challenge = HillClimbing::new(15, ());
+            let challenge = ConstraintPropagation::new(15, ());
             assert!(challenge.solve().is_some());
         }
     }
@@ -268,18 +268,18 @@ pub fn solve<T: NQueensStrategy>(n: usize,
 }
 
 #[cfg(target_os = "emscripten")]
-#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_hill_climbing'] -s RESERVED_FUNCTION_POINTERS=20"]
+#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation'] -s RESERVED_FUNCTION_POINTERS=20"]
 extern {}
 
 // TODO(emilio): Get rid of this.
 pub type JSCallback = extern "C" fn(positions: *const usize, len: usize);
 
 #[no_mangle]
-pub fn solve_n_queens_hill_climbing(n: usize,
+pub fn solve_n_queens_constraint_propagation(n: usize,
                                     result_storage: *mut usize,
                                     cb: Option<JSCallback>)
                                     -> usize {
-    solve::<hill_climbing::HillClimbing>(n, result_storage, cb, ())
+    solve::<constraint_propagation::ConstraintPropagation>(n, result_storage, cb, ())
 }
 
 fn main() { /* Intentionally empty */ }
