@@ -22,7 +22,15 @@ pub trait NQueensStrategy: Sized {
 
     /// Solves the challenge for returning a vector with `n` positions,
     /// representing the column at which the queen is positioned for each index.
-    fn solve(self) -> Option<Box<[usize]>>;
+    fn solve(self) -> Option<Box<[usize]>> {
+        self.solve_with_callback(|_| {})
+    }
+
+    /// Solves the challenge for returning a vector with `n` positions,
+    /// representing the column at which the queen is positioned for each index,
+    /// and additionally runs `callback` on each step the potisions changed.
+    fn solve_with_callback<F>(self, callback: F) -> Option<Box<[usize]>>
+        where F: FnMut(&[usize]);
 
     /// Get the currently positioned queen rows.
     fn queen_rows(&self) -> &[usize];
@@ -117,7 +125,11 @@ pub mod hill_climbing {
             &self.queen_rows
         }
 
-        fn solve(mut self) -> Option<Box<[usize]>> {
+        fn solve_with_callback<F>(mut self,
+                                  mut callback: F)
+                                  -> Option<Box<[usize]>>
+            where F: FnMut(&[usize]),
+        {
             if self.dimension() == 0 {
                 return Some(vec![].into_boxed_slice());
             }
@@ -127,11 +139,13 @@ pub mod hill_climbing {
                 match self.position_next_queen_from_row(start_search_at) {
                     Ok(pos) => {
                         self.queen_rows.push(pos);
+                        callback(&self.queen_rows);
                         start_search_at = 0;
                     }
                     Err(()) => {
                         match self.queen_rows.pop() {
                             Some(row) => {
+                                callback(&self.queen_rows);
                                 start_search_at = row + 1;
                             }
                             // No solution.
