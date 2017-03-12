@@ -1,0 +1,8 @@
+[package]
+name = "local-search-algorithms"
+version = "0.1.0"
+authors = ["Emilio Cobos Álvarez <emilio@crisal.io>"]
+build = "build.rs"
+
+[dependencies]
+rand = "0.3.5"

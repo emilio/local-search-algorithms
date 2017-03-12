@@ -267,7 +267,7 @@ pub fn solve<T: NQueensStrategy>(n: usize,
     return 1;
 }
 
-#[cfg(not(test))]
+#[cfg(target_os = "emscripten")]
 #[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_hill_climbing'] -s RESERVED_FUNCTION_POINTERS=20"]
 extern {}
 

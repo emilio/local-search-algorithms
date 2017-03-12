@@ -73,10 +73,8 @@ class Application {
           array[i].classList.add('black');
       }
 
-      for (let i = 0; i < count; ++i) {
-        console.log(i);
+      for (let i = 0; i < count; ++i)
         array[result[i]].classList.add('queen');
-      }
 
       let percentage = count == 0 ? 0 : 100 / count;
       this.grid.style.gridTemplateColumns = 'repeat(' + count + ', ' + percentage + '%)';
