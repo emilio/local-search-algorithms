@@ -53,6 +53,9 @@
 </style>
 <div id="grid" class="no-solution">
 </div>
+<div>
+  Score (lower is better): <span id="score-board"></span>
+</div>
 <div id="options">
   <label for="number-chooser">Choose queen count</label>
   <input type="number" id="number-chooser">
@@ -60,6 +63,7 @@
 </div>
 <script>
   var app = new Application(document.getElementById('grid'),
+                            document.getElementById('score-board'),
                             document.getElementById('number-chooser'),
                             document.getElementById('run'));
   app.run();

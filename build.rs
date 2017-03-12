@@ -8,6 +8,9 @@ fn main() {
         let dest = env::var("OUT_DIR").unwrap();
         let dest = Path::new(&dest);
 
+        println!("cargo:rerun-if-changed=src/application.ts");
+        println!("cargo:rerun-if-changed=src/index.html");
+
         // Dump it in the same directory as the executable.
         let dest = dest.parent().unwrap().parent().unwrap().parent().unwrap();
 

@@ -1,5 +1,7 @@
 #![feature(link_args)]
 
+extern crate rand;
+
 pub enum PositionError {
     /// A queen is already there.
     Match,
@@ -9,6 +11,20 @@ pub enum PositionError {
     Row,
     /// Queen in the same diagonal.
     Diagonal,
+}
+
+pub struct Solution {
+    queen_rows: Box<[usize]>,
+    score: usize,
+}
+
+impl Solution {
+    pub fn new(queen_rows: Vec<usize>, score: usize) -> Self {
+        Solution {
+            queen_rows: queen_rows.into_boxed_slice(),
+            score: score,
+        }
+    }
 }
 
 /// A problem-solving strategy for the n-queens problem.
@@ -22,18 +38,22 @@ pub trait NQueensStrategy: Sized {
 
     /// Solves the challenge for returning a vector with `n` positions,
     /// representing the column at which the queen is positioned for each index.
-    fn solve(self) -> Option<Box<[usize]>> {
-        self.solve_with_callback(|_| {})
+    fn solve(self) -> Solution {
+        self.solve_with_callback(|_, _| {})
     }
 
     /// Solves the challenge for returning a vector with `n` positions,
     /// representing the column at which the queen is positioned for each index,
-    /// and additionally runs `callback` on each step the potisions changed.
-    fn solve_with_callback<F>(self, callback: F) -> Option<Box<[usize]>>
-        where F: FnMut(&[usize]);
+    /// and additionally runs `callback` on each step the positions changed,
+    /// with the queen positions and the current score so far.
+    fn solve_with_callback<F>(self, callback: F) -> Solution
+        where F: FnMut(&[usize], usize);
 
     /// Get the currently positioned queen rows.
     fn queen_rows(&self) -> &[usize];
+
+    /// Get the size of the board.
+    fn size(&self) -> usize;
 
     /// Returns true if a queen positioned at `one` could be hit by a queen
     /// positioned at `other`.
@@ -64,6 +84,52 @@ pub trait NQueensStrategy: Sized {
         }
 
         Ok(())
+    }
+
+    fn can_hit(&self,
+               p1: (usize, usize),
+               p2: (usize, usize)) -> bool {
+        self.can_position(p1, p2).is_err()
+    }
+
+    /// Returns true if the current algorithm can't find a better solution,
+    /// because all the queens can't hit each other.
+    fn done(&self) -> bool {
+        let size = self.size();
+        let rows = self.queen_rows();
+
+        // Still unpositioned queens.
+        if size != rows.len() {
+            return false;
+        }
+
+        for i in 0..size {
+            for j in (i + 1)..size {
+                if self.can_hit((i, rows[i]), (j, rows[j])) {
+                    return false;
+                }
+            }
+        }
+
+        debug_assert!(self.score() == 0);
+        return true;
+    }
+
+    /// Returns the number of pairs of queens that can hit each other.
+    fn score(&self) -> usize {
+        let rows = self.queen_rows();
+
+        let mut score = 0;
+
+        for i in 0..rows.len() {
+            for j in (i + 1)..rows.len() {
+                if self.can_hit((i, rows[i]), (j, rows[j])) {
+                    score += 1;
+                }
+            }
+        }
+
+        score
     }
 
     fn queen_can_be_positioned_at(&self,
@@ -121,41 +187,35 @@ pub mod constraint_propagation {
             }
         }
 
-        fn queen_rows(&self) -> &[usize] {
-            &self.queen_rows
-        }
+        fn queen_rows(&self) -> &[usize] { &self.queen_rows }
+        fn size(&self) -> usize { self.size }
 
-        fn solve_with_callback<F>(mut self,
-                                  mut callback: F)
-                                  -> Option<Box<[usize]>>
-            where F: FnMut(&[usize]),
+        fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
+            where F: FnMut(&[usize], usize),
         {
-            if self.size == 0 {
-                return Some(vec![].into_boxed_slice());
-            }
-
             let mut start_search_at = 0;
             while self.queen_rows.len() != self.size {
                 match self.position_next_queen_from_row(start_search_at) {
                     Ok(pos) => {
                         self.queen_rows.push(pos);
-                        callback(&self.queen_rows);
+                        callback(&self.queen_rows, 0);
                         start_search_at = 0;
                     }
                     Err(()) => {
                         match self.queen_rows.pop() {
                             Some(row) => {
-                                callback(&self.queen_rows);
+                                callback(&self.queen_rows, 0);
                                 start_search_at = row + 1;
                             }
-                            // No solution.
-                            None => return None,
+                            // Not a single solution.
+                            None => break,
                         }
                     }
                 }
             }
 
-            return Some(self.queen_rows.into_boxed_slice());
+            let score = self.score();
+            Solution::new(self.queen_rows, score)
         }
     }
 
@@ -182,21 +242,108 @@ pub mod constraint_propagation {
         #[test]
         fn finds_eight_queens_solution() {
             let challenge = ConstraintPropagation::new(DIM, ());
-            assert!(challenge.solve().is_some());
+            assert_eq!(challenge.solve().score, 0);
         }
 
         #[test]
         fn finds_twelve_queens_solution() {
             let challenge = ConstraintPropagation::new(12, ());
-            assert!(challenge.solve().is_some());
+            assert_eq!(challenge.solve().score, 0);
         }
 
         #[test]
         fn finds_fifteen_queens_solution() {
             let challenge = ConstraintPropagation::new(15, ());
-            assert!(challenge.solve().is_some());
+            assert_eq!(challenge.solve().score, 0);
         }
     }
+}
+
+pub mod hill_climbing {
+    use super::*;
+    use rand::Rng;
+
+    pub struct HillClimbing {
+        size: usize,
+        queen_rows: Vec<usize>,
+        rng: rand::OsRng,
+    }
+
+    impl HillClimbing {
+        fn random_queen_index(&mut self) -> usize {
+            self.rng.next_u32() as usize % self.queen_rows.len()
+        }
+    }
+
+    impl NQueensStrategy for HillClimbing {
+        /// No configuration needed.
+        type Config = ();
+
+        fn new(size: usize, _: ()) -> Self {
+            let mut rng = rand::OsRng::new().unwrap();
+            let mut positions_pending =
+                (0..size).into_iter().collect::<Vec<_>>();
+
+            let mut queen_rows = vec![0; size];
+
+            // Distribute the initial positions randomly.
+            while !positions_pending.is_empty() {
+                let chosen =
+                    rng.next_u32() as usize % positions_pending.len();
+
+                let position = positions_pending.remove(chosen);
+                queen_rows[positions_pending.len()] = position;
+            }
+
+            HillClimbing {
+                size: size,
+                queen_rows: queen_rows,
+                rng: rng,
+            }
+        }
+
+        fn queen_rows(&self) -> &[usize] { &self.queen_rows }
+        fn size(&self) -> usize { self.size }
+
+        fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
+            where F: FnMut(&[usize], usize),
+        {
+            use std::mem;
+            const MAX_ITERATIONS_WITHOUT_IMPROVEMENT: usize = 1000;
+
+            let mut current_score = self.score();
+            let mut iterations_without_improvement = 0;
+
+            callback(&self.queen_rows(), current_score);
+
+            while current_score != 0 &&
+                  iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT {
+                let mut queen_1 = self.random_queen_index();
+                let mut queen_2 = self.random_queen_index();
+                while queen_1 == queen_2 {
+                    queen_2 = self.random_queen_index();
+                }
+
+                // Swap them, and check score.
+                self.queen_rows.swap(queen_1, queen_2);
+
+                let score = self.score();
+                if score < current_score {
+                    // Yay, an improvement! Let's leave the stuff as-is :)
+                    iterations_without_improvement = 0;
+                    current_score = score;
+                    callback(&self.queen_rows, current_score)
+                } else {
+                    // Didn't improve, let's just get back to where we were.
+                    iterations_without_improvement += 1;
+                    self.queen_rows.swap(queen_1, queen_2);
+                }
+            }
+
+            Solution::new(self.queen_rows, current_score)
+        }
+    }
+
 }
 
 pub mod simulated_annealing {
@@ -226,19 +373,12 @@ pub mod simulated_annealing {
             }
         }
 
-        fn queen_rows(&self) -> &[usize] {
-            &self.queen_rows
-        }
+        fn queen_rows(&self) -> &[usize] { &self.queen_rows }
+        fn size(&self) -> usize { self.size }
 
-        fn solve_with_callback<F>(mut self,
-                                  mut callback: F)
-                                  -> Option<Box<[usize]>>
-            where F: FnMut(&[usize]),
+        fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
+            where F: FnMut(&[usize], usize),
         {
-            if self.size == 0 {
-                return Some(vec![].into_boxed_slice());
-            }
-
             unimplemented!();
         }
     }
@@ -246,33 +386,36 @@ pub mod simulated_annealing {
 
 pub fn solve<T: NQueensStrategy>(n: usize,
                                  result_storage: *mut usize,
-                                 _callback: Option<JSCallback>,
+                                 callback: Option<JSCallback>,
                                  config: T::Config)
                                  -> usize {
     use std::slice;
 
     let challenge = T::new(n, config);
-    let result = challenge.solve();
+    let solution = challenge.solve_with_callback(|queens, score| {
+        if let Some(cb) = callback {
+            cb(queens.as_ptr(), queens.len(), score)
+        }
+    });
 
-    let result = match result {
-        Some(result) => result,
-        None => return 0,
-    };
+    let mut storage = unsafe { slice::from_raw_parts_mut(result_storage, n + 1) };
+    storage[0] = solution.queen_rows.len();
 
-    let mut storage = unsafe { slice::from_raw_parts_mut(result_storage, n) };
-    for (x, y) in result.into_iter().enumerate() {
-        storage[x] = x + y * n;
+    // TODO(emilio): This is inconsistent with the data passed to the callback.
+    for (x, y) in solution.queen_rows.into_iter().enumerate() {
+        storage[x + 1] = x + y * n;
     }
 
-    return 1;
+    solution.score
 }
 
 #[cfg(target_os = "emscripten")]
-#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation'] -s RESERVED_FUNCTION_POINTERS=20"]
+#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing'] -s RESERVED_FUNCTION_POINTERS=20"]
 extern {}
 
-// TODO(emilio): Get rid of this.
-pub type JSCallback = extern "C" fn(positions: *const usize, len: usize);
+pub type JSCallback = extern "C" fn(positions: *const usize,
+                                    len: usize,
+                                    score: usize);
 
 #[no_mangle]
 pub fn solve_n_queens_constraint_propagation(n: usize,
@@ -280,6 +423,14 @@ pub fn solve_n_queens_constraint_propagation(n: usize,
                                     cb: Option<JSCallback>)
                                     -> usize {
     solve::<constraint_propagation::ConstraintPropagation>(n, result_storage, cb, ())
+}
+
+#[no_mangle]
+pub fn solve_n_queens_hill_climbing(n: usize,
+                                    result_storage: *mut usize,
+                                    cb: Option<JSCallback>)
+                                    -> usize {
+    solve::<hill_climbing::HillClimbing>(n, result_storage, cb, ())
 }
 
 fn main() { /* Intentionally empty */ }
