@@ -1,5 +1,16 @@
 #![feature(link_args)]
 
+pub enum PositionError {
+    /// A queen is already there.
+    Match,
+    /// Queen in the same column.
+    Column,
+    /// Queen in the same row.
+    Row,
+    /// Queen in the same diagonal.
+    Diagonal,
+}
+
 /// A problem-solving strategy for the n-queens problem.
 pub trait NQueensStrategy: Sized {
     /// Extra parameters that may be given to the challenge to configure the
@@ -12,6 +23,52 @@ pub trait NQueensStrategy: Sized {
     /// Solves the challenge for returning a vector with `n` positions,
     /// representing the column at which the queen is positioned for each index.
     fn solve(self) -> Option<Box<[usize]>>;
+
+    /// Get the currently positioned queen rows.
+    fn queen_rows(&self) -> &[usize];
+
+    /// Returns true if a queen positioned at `one` could be hit by a queen
+    /// positioned at `other`.
+    fn can_position(&self,
+                    p1: (usize, usize),
+                    p2: (usize, usize))
+                    -> Result<(), PositionError> {
+        let (x1, y1) = p1;
+        let (x2, y2) = p2;
+
+        if x1 == x2 && y1 == y2 {
+            return Err(PositionError::Match);
+        }
+
+        if x1 == x2 {
+            return Err(PositionError::Column);
+        }
+
+        if y1 == y2 {
+            return Err(PositionError::Row);
+        }
+
+        let x_difference = (x1 as isize - x2 as isize).abs();
+        let y_difference = (y1 as isize - y2 as isize).abs();
+
+        if x_difference == y_difference {
+            return Err(PositionError::Diagonal);
+        }
+
+        Ok(())
+    }
+
+    fn queen_can_be_positioned_at(&self,
+                                  pos: (usize, usize))
+                                  -> bool {
+        for (x, &y) in self.queen_rows().iter().enumerate() {
+            if self.can_position(pos, (x, y)).is_err() {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 pub mod hill_climbing {
@@ -25,60 +82,9 @@ pub mod hill_climbing {
         queen_rows: Vec<usize>,
     }
 
-    enum PositionError {
-        /// A queen is already there.
-        Match,
-        /// Queen in the same column.
-        Column,
-        /// Queen in the same row.
-        Row,
-        /// Queen in the same diagonal.
-        Diagonal,
-    }
-
     impl HillClimbing {
         fn dimension(&self) -> usize {
             self.size
-        }
-
-        /// Returns true if a queen positioned at `one` could be hit by a queen
-        /// positioned at `other`.
-        fn can_position(&self,
-                        (x1, y1): (usize, usize),
-                        (x2, y2): (usize, usize))
-                        -> Result<(), PositionError> {
-            if x1 == x2 && y1 == y2 {
-                return Err(PositionError::Match);
-            }
-
-            if x1 == x2 {
-                return Err(PositionError::Column);
-            }
-
-            if y1 == y2 {
-                return Err(PositionError::Row);
-            }
-
-            let x_difference = (x1 as isize - x2 as isize).abs();
-            let y_difference = (y1 as isize - y2 as isize).abs();
-
-            if x_difference == y_difference {
-                return Err(PositionError::Diagonal);
-            }
-
-            Ok(())
-        }
-
-        fn queen_can_be_positioned_at(&self,
-                                      pos: (usize, usize))
-                                      -> bool {
-            for (x, &y) in self.queen_rows.iter().enumerate() {
-                if self.can_position(pos, (x, y)).is_err() {
-                    return false;
-                }
-            }
-
-            true
         }
 
         /// Tries to position the next queen at row `row`, or any of the
@@ -105,6 +111,10 @@ pub mod hill_climbing {
                 size: dimensions,
                 queen_rows: Vec::with_capacity(dimensions),
             }
+        }
+
+        fn queen_rows(&self) -> &[usize] {
+            &self.queen_rows
         }
 
         fn solve(mut self) -> Option<Box<[usize]>> {
