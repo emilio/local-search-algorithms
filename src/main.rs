@@ -259,20 +259,53 @@ pub mod constraint_propagation {
     }
 }
 
-pub mod hill_climbing {
-    use super::*;
-    use rand::Rng;
+/// A generic data with most of the state needed for common algorithms to be
+/// solved.
+///
+/// This would be a base class in other OOP languages. Instead, we use
+/// composition in Rust.
+pub struct GenericChallengeState {
+    size: usize,
+    queen_rows: Vec<usize>,
+    rng: rand::OsRng,
+}
 
-    pub struct HillClimbing {
-        size: usize,
-        queen_rows: Vec<usize>,
-        rng: rand::OsRng,
+impl GenericChallengeState {
+    pub fn new(size: usize) -> Self {
+        use rand::Rng;
+        let mut rng = rand::OsRng::new().unwrap();
+        let mut positions_pending =
+            (0..size).into_iter().collect::<Vec<_>>();
+
+        let mut queen_rows = vec![0; size];
+
+        // Distribute the initial positions randomly.
+        while !positions_pending.is_empty() {
+            let chosen =
+                rng.next_u32() as usize % positions_pending.len();
+
+            let position = positions_pending.remove(chosen);
+            queen_rows[positions_pending.len()] = position;
+        }
+
+        Self {
+            size: size,
+            queen_rows: queen_rows,
+            rng: rng,
+        }
     }
 
-    impl HillClimbing {
-        fn random_queen_index(&mut self) -> usize {
-            self.rng.next_u32() as usize % self.queen_rows.len()
-        }
+    pub fn random_queen_index(&mut self) -> usize {
+        use rand::Rng;
+        self.rng.next_u32() as usize % self.queen_rows.len()
+    }
+}
+
+pub mod hill_climbing {
+    use super::*;
+
+    pub struct HillClimbing {
+        base: GenericChallengeState,
     }
 
     impl NQueensStrategy for HillClimbing {
@@ -280,30 +313,13 @@ pub mod hill_climbing {
         type Config = ();
 
         fn new(size: usize, _: ()) -> Self {
-            let mut rng = rand::OsRng::new().unwrap();
-            let mut positions_pending =
-                (0..size).into_iter().collect::<Vec<_>>();
-
-            let mut queen_rows = vec![0; size];
-
-            // Distribute the initial positions randomly.
-            while !positions_pending.is_empty() {
-                let chosen =
-                    rng.next_u32() as usize % positions_pending.len();
-
-                let position = positions_pending.remove(chosen);
-                queen_rows[positions_pending.len()] = position;
-            }
-
-            HillClimbing {
-                size: size,
-                queen_rows: queen_rows,
-                rng: rng,
+            Self {
+                base: GenericChallengeState::new(size),
             }
         }
 
-        fn queen_rows(&self) -> &[usize] { &self.queen_rows }
-        fn size(&self) -> usize { self.size }
+        fn queen_rows(&self) -> &[usize] { &self.base.queen_rows }
+        fn size(&self) -> usize { self.base.size }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
             where F: FnMut(&[usize], usize),
@@ -318,29 +334,29 @@ pub mod hill_climbing {
 
             while current_score != 0 &&
                   iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT {
-                let mut queen_1 = self.random_queen_index();
-                let mut queen_2 = self.random_queen_index();
+                let mut queen_1 = self.base.random_queen_index();
+                let mut queen_2 = self.base.random_queen_index();
                 while queen_1 == queen_2 {
-                    queen_2 = self.random_queen_index();
+                    queen_2 = self.base.random_queen_index();
                 }
 
                 // Swap them, and check score.
-                self.queen_rows.swap(queen_1, queen_2);
+                self.base.queen_rows.swap(queen_1, queen_2);
 
                 let score = self.score();
                 if score < current_score {
                     // Yay, an improvement! Let's leave the stuff as-is :)
                     iterations_without_improvement = 0;
                     current_score = score;
-                    callback(&self.queen_rows, current_score)
+                    callback(&self.base.queen_rows, current_score)
                 } else {
                     // Didn't improve, let's just get back to where we were.
                     iterations_without_improvement += 1;
-                    self.queen_rows.swap(queen_1, queen_2);
+                    self.base.queen_rows.swap(queen_1, queen_2);
                 }
             }
 
-            Solution::new(self.queen_rows, current_score)
+            Solution::new(self.base.queen_rows, current_score)
         }
     }
 
@@ -355,26 +371,24 @@ pub mod simulated_annealing {
     }
 
     pub struct SimulatedAnnealing {
+        base: GenericChallengeState,
         temperature: usize,
         cooling_factor: f32,
-        size: usize,
-        queen_rows: Vec<usize>,
     }
 
     impl NQueensStrategy for SimulatedAnnealing {
         type Config = SimulatedAnnealingConfig;
 
-        fn new(dimensions: usize, config: Self::Config) -> Self {
+        fn new(size: usize, config: Self::Config) -> Self {
             SimulatedAnnealing {
+                base: GenericChallengeState::new(size),
                 temperature: config.starting_temperature,
                 cooling_factor: config.cooling_factor,
-                size: dimensions,
-                queen_rows: Vec::with_capacity(dimensions),
             }
         }
 
-        fn queen_rows(&self) -> &[usize] { &self.queen_rows }
-        fn size(&self) -> usize { self.size }
+        fn queen_rows(&self) -> &[usize] { &self.base.queen_rows }
+        fn size(&self) -> usize { self.base.size }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
             where F: FnMut(&[usize], usize),
