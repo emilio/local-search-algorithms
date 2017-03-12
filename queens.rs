@@ -130,12 +130,12 @@ pub mod hill_climbing {
                                   -> Option<Box<[usize]>>
             where F: FnMut(&[usize]),
         {
-            if self.dimension() == 0 {
+            if self.size == 0 {
                 return Some(vec![].into_boxed_slice());
             }
 
             let mut start_search_at = 0;
-            while self.queen_rows.len() != self.dimension() {
+            while self.queen_rows.len() != self.size {
                 match self.position_next_queen_from_row(start_search_at) {
                     Ok(pos) => {
                         self.queen_rows.push(pos);
@@ -195,6 +195,51 @@ pub mod hill_climbing {
         fn finds_fifteen_queens_solution() {
             let challenge = HillClimbing::new(15, ());
             assert!(challenge.solve().is_some());
+        }
+    }
+}
+
+pub mod simulated_annealing {
+    use super::*;
+
+    pub struct SimulatedAnnealingConfig {
+        starting_temperature: usize,
+        cooling_factor: f32,
+    }
+
+    pub struct SimulatedAnnealing {
+        temperature: usize,
+        cooling_factor: f32,
+        size: usize,
+        queen_rows: Vec<usize>,
+    }
+
+    impl NQueensStrategy for SimulatedAnnealing {
+        type Config = SimulatedAnnealingConfig;
+
+        fn new(dimensions: usize, config: Self::Config) -> Self {
+            SimulatedAnnealing {
+                temperature: config.starting_temperature,
+                cooling_factor: config.cooling_factor,
+                size: dimensions,
+                queen_rows: Vec::with_capacity(dimensions),
+            }
+        }
+
+        fn queen_rows(&self) -> &[usize] {
+            &self.queen_rows
+        }
+
+        fn solve_with_callback<F>(mut self,
+                                  mut callback: F)
+                                  -> Option<Box<[usize]>>
+            where F: FnMut(&[usize]),
+        {
+            if self.size == 0 {
+                return Some(vec![].into_boxed_slice());
+            }
+
+            unimplemented!();
         }
     }
 }
