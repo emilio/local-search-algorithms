@@ -158,6 +158,7 @@ pub mod constraint_propagation {
 ///
 /// This would be a base class in other OOP languages. Instead, we use
 /// composition in Rust.
+#[derive(Clone)]
 pub struct GenericChallengeState {
     size: usize,
     queen_rows: Vec<usize>,
@@ -252,29 +253,6 @@ impl GenericChallengeState {
                p1: (usize, usize),
                p2: (usize, usize)) -> bool {
         self.can_position(p1, p2).is_err()
-    }
-
-    /// Returns true if the current algorithm can't find a better solution,
-    /// because all the queens can't hit each other.
-    fn done(&self) -> bool {
-        let size = self.size;
-        let rows = &self.queen_rows;
-
-        // Still unpositioned queens.
-        if size != rows.len() {
-            return false;
-        }
-
-        for i in 0..size {
-            for j in (i + 1)..size {
-                if self.can_hit((i, rows[i]), (j, rows[j])) {
-                    return false;
-                }
-            }
-        }
-
-        debug_assert!(self.score() == 0);
-        return true;
     }
 
     /// Returns the number of pairs of queens that can hit each other.
@@ -442,14 +420,15 @@ pub mod simulated_annealing {
     }
 }
 
-mod local_beam_search {
+pub mod local_beam_search {
     use super::*;
 
-    struct LocalBeamSearchConfig {
-        state_count: usize,
+    pub struct LocalBeamSearchConfig {
+        pub state_count: usize,
     }
 
-    struct LocalBeamSearch {
+    pub struct LocalBeamSearch {
+        size: usize,
         state_count: usize,
         rng: rand::OsRng,
     }
@@ -459,6 +438,7 @@ mod local_beam_search {
 
         fn new(size: usize, config: Self::Config) -> Self {
             Self {
+                size: size,
                 state_count: config.state_count,
                 rng: rand::OsRng::new().unwrap(),
             }
@@ -467,7 +447,54 @@ mod local_beam_search {
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
             where F: FnMut(&[usize], usize),
         {
-            unimplemented!()
+            use std::mem;
+
+            let mut states = Vec::with_capacity(self.state_count);
+            for _ in 0..self.state_count {
+                states.push(GenericChallengeState::new(self.size, &mut self.rng))
+            }
+
+            loop {
+                let mut is_first = true;
+
+                // First, see if one of the states if a solution. If so, stop.
+                for state in &states {
+                    let score = state.score();
+
+                    // FIXME(emilio): We only visualize the first state,
+                    // which is... not great.
+                    if is_first {
+                        callback(&state.queen_rows, score);
+                    }
+
+                    if score == 0 {
+                        callback(&state.queen_rows, score);
+                        return Solution::new(state.queen_rows.clone(), 0);
+                    }
+
+                    is_first = false;
+                }
+
+                // Find all the successors to the current states, and push them.
+                let mut successors =
+                    Vec::with_capacity(states.len() * self.size);
+
+                for state in &states {
+                    for i in 0..self.size {
+                        for j in i + 1..self.size {
+                            let mut successor = state.clone();
+                            successor.queen_rows.swap(i, j);
+                            successors.push(successor);
+                        }
+                    }
+                }
+
+                // TODO(emilio): This recomputes the score a few times more than
+                // needed, but oh well.
+                successors.sort_by_key(|s| s.score());
+                mem::swap(&mut successors, &mut states);
+                states.truncate(self.state_count);
+            }
         }
     }
 }
@@ -498,7 +525,7 @@ pub fn solve<T: NQueensStrategy>(n: usize,
 }
 
 #[cfg(target_os = "emscripten")]
-#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing','_solve_n_queens_simulated_annealing'] -s RESERVED_FUNCTION_POINTERS=20"]
+#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing','_solve_n_queens_simulated_annealing','_solve_n_queens_local_beam_search'] -s RESERVED_FUNCTION_POINTERS=20"]
 extern {}
 
 pub type JSCallback = extern "C" fn(positions: *const usize,
@@ -534,6 +561,18 @@ pub fn solve_n_queens_simulated_annealing(n: usize,
         cooling_factor: cooling_factor,
     };
     solve::<simulated_annealing::SimulatedAnnealing>(n, result_storage, cb, config)
+}
+
+#[no_mangle]
+pub fn solve_n_queens_local_beam_search(n: usize,
+                                        result_storage: *mut usize,
+                                        cb: Option<JSCallback>,
+                                        state_count: usize)
+                                        -> usize {
+    let config = local_beam_search::LocalBeamSearchConfig {
+        state_count: state_count,
+    };
+    solve::<local_beam_search::LocalBeamSearch>(n, result_storage, cb, config)
 }
 
 fn main() { /* Intentionally empty */ }

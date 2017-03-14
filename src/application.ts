@@ -72,6 +72,7 @@ class Application {
               public algorithmChooser: HTMLSelectElement,
               public simulatedAnnealingInitialTemperature: HTMLInputElement,
               public simulatedAnnealingCoolingFactor: HTMLInputElement,
+              public localBeamSearchStateCount: HTMLInputElement,
               public runButton: HTMLElement) {
     this.asmInterface = new ASMInterface();
   }
@@ -87,19 +88,21 @@ class Application {
     let args = [];
     switch (name) {
       case "hill_climbing":
-      case "simulated_annealing":
       case "constraint_propagation":
         break;
+      case "simulated_annealing":
+        args.push(this.simulatedAnnealingInitialTemperature.valueAsNumber)
+        args.push(
+          Math.max(0,
+            Math.min(1,
+              this.simulatedAnnealingCoolingFactor.valueAsNumber / 100)));
+        break;
+      case "local_beam_search":
+        args.push(this.localBeamSearchStateCount.valueAsNumber);
+        break;
+
       default:
         return null;
-    }
-
-    if (name == "simulated_annealing") {
-      args.push(this.simulatedAnnealingInitialTemperature.valueAsNumber)
-      args.push(
-        Math.max(0,
-          Math.min(1,
-            this.simulatedAnnealingCoolingFactor.valueAsNumber / 100)));
     }
 
     return new AlgorithmConfig(name, args);
