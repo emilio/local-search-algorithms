@@ -73,6 +73,11 @@ class Application {
               public simulatedAnnealingInitialTemperature: HTMLInputElement,
               public simulatedAnnealingCoolingFactor: HTMLInputElement,
               public localBeamSearchStateCount: HTMLInputElement,
+              public geneticGenerationSize: HTMLInputElement,
+              public geneticElitismPercent: HTMLInputElement,
+              public geneticCrossoverProbability: HTMLInputElement,
+              public geneticMutationProbability: HTMLInputElement,
+              public geneticGenerationCount: HTMLInputElement,
               public runButton: HTMLElement) {
     this.asmInterface = new ASMInterface();
   }
@@ -86,19 +91,28 @@ class Application {
   currentAlgorithm() : AlgorithmConfig {
     let name = this.algorithmChooser.options[this.algorithmChooser.selectedIndex].value;
     let args = [];
+
+    function percent(input: HTMLInputElement) : number {
+      return Math.max(0, Math.min(1, input.valueAsNumber / 100));
+    }
+
     switch (name) {
       case "hill_climbing":
       case "constraint_propagation":
         break;
       case "simulated_annealing":
         args.push(this.simulatedAnnealingInitialTemperature.valueAsNumber)
-        args.push(
-          Math.max(0,
-            Math.min(1,
-              this.simulatedAnnealingCoolingFactor.valueAsNumber / 100)));
+        args.push(percent(this.simulatedAnnealingCoolingFactor));
         break;
       case "local_beam_search":
         args.push(this.localBeamSearchStateCount.valueAsNumber);
+        break;
+      case "genetic":
+        args.push(this.geneticGenerationSize.valueAsNumber)
+        args.push(percent(this.geneticElitismPercent));
+        args.push(percent(this.geneticCrossoverProbability));
+        args.push(percent(this.geneticMutationProbability));
+        args.push(this.geneticGenerationCount.valueAsNumber);
         break;
 
       default:

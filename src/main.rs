@@ -158,7 +158,7 @@ pub mod constraint_propagation {
 ///
 /// This would be a base class in other OOP languages. Instead, we use
 /// composition in Rust.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GenericChallengeState {
     size: usize,
     queen_rows: Vec<usize>,
@@ -463,12 +463,11 @@ pub mod local_beam_search {
 
                     // FIXME(emilio): We only visualize the first state,
                     // which is... not great.
-                    if is_first {
+                    if is_first || score == 0 {
                         callback(&state.queen_rows, score);
                     }
 
                     if score == 0 {
-                        callback(&state.queen_rows, score);
                         return Solution::new(state.queen_rows.clone(), 0);
                     }
 
@@ -499,6 +498,174 @@ pub mod local_beam_search {
     }
 }
 
+pub mod genetic_algorithm {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct GeneticAlgorithmConfig {
+        pub generation_size: usize,
+        pub elitism: f32,
+        pub crossover_probability: f32,
+        pub mutation_probability: f32,
+        pub generation_count: usize,
+    }
+
+    pub struct GeneticAlgorithm {
+        size: usize,
+        rng: rand::OsRng,
+        config: GeneticAlgorithmConfig,
+    }
+
+    impl GeneticAlgorithm {
+        fn maybe_mutate(&mut self, state: &mut GenericChallengeState) {
+            use rand::Rng;
+            if self.rng.next_f32() < self.config.mutation_probability {
+                let (one, other) = state.get_two_random_queens(&mut self.rng);
+                state.queen_rows.swap(one, other);
+            }
+        }
+    }
+
+    impl NQueensStrategy for GeneticAlgorithm {
+        type Config = GeneticAlgorithmConfig;
+
+        fn new(size: usize, config: Self::Config) -> Self {
+            Self {
+                size: size,
+                rng: rand::OsRng::new().unwrap(),
+                config: config,
+            }
+        }
+
+        fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
+            where F: FnMut(&[usize], usize),
+        {
+            use std::{cmp, mem};
+            use rand::Rng;
+
+            if self.config.generation_size == 0 {
+                return Solution::new(vec![], 0);
+            }
+
+            let mut current_generation =
+                Vec::with_capacity(self.config.generation_size);
+            for _ in 0..self.config.generation_size {
+                current_generation.push(GenericChallengeState::new(self.size, &mut self.rng))
+            }
+
+            let mut pending_generations = self.config.generation_count;
+            while pending_generations > 0 {
+                let mut is_first = true;
+                let mut max_score = 0;
+                let mut scores = Vec::with_capacity(self.config.generation_size);
+
+                current_generation.sort_by_key(|s| s.score());
+                for state in &current_generation {
+                    // TODO(emilio): Same problem as before, need a better way
+                    // to visualize it.
+                    let score = state.score();
+                    if is_first || score == 0 {
+                        callback(&state.queen_rows, score);
+                    }
+
+                    if score == 0 {
+                        return Solution::new(state.queen_rows.clone(), 0);
+                    }
+
+                    max_score = cmp::max(max_score, score);
+                    scores.push(score);
+                    is_first = false;
+                }
+
+                let mut total_inverse_score = 0;
+                for score in &scores {
+                    total_inverse_score += max_score - *score
+                }
+                let mut next_generation =
+                    Vec::with_capacity(self.config.generation_size);
+
+                let percent_per_individual =
+                    1.0f32 / current_generation.len() as f32;
+                let mut percent_so_far = 0.0f32;
+                let mut non_elite_generation_start = 0;
+                while percent_so_far < self.config.elitism {
+                    percent_so_far += percent_per_individual;
+                    next_generation.push(current_generation[non_elite_generation_start].clone());
+                    non_elite_generation_start += 1;
+                }
+
+                // Lower score is better, so make a probability of:
+                // (max_score - score / total).
+                for _ in non_elite_generation_start..self.config.generation_size {
+                    let p = self.rng.next_f32();
+                    let mut previous = 0.;
+                    let mut chosen_one = false;
+                    for (i, score) in scores.iter().enumerate().rev() {
+                        let probability = if total_inverse_score == 0 {
+                            previous + percent_per_individual as f32
+                        } else {
+                            previous + (max_score - *score) as f32 / total_inverse_score as f32
+                        };
+                        if p < probability {
+                            next_generation.push(current_generation[i].clone());
+                            chosen_one = true;
+                            break;
+                        }
+                        previous = probability;
+                    }
+
+                    assert!(chosen_one);
+                }
+
+                // Now do the mix.
+                // TODO(emilio): We always leave the last untouched, which is
+                // fishy.
+                for i in non_elite_generation_start..next_generation.len() - 1 {
+                    let crossover = self.rng.next_f32() < self.config.crossover_probability;
+                    if crossover {
+                        let solution_split = self.rng.next_u32() as usize % self.size;
+                        let (mut left, mut right) = next_generation.split_at_mut(i + 1);
+                        for j in 0..solution_split {
+                            mem::swap(&mut right[0].queen_rows[j],
+                                      &mut left[i].queen_rows[j]);
+                        }
+                    }
+                }
+
+                if next_generation.len() - non_elite_generation_start >= 2 {
+                    // Cross-over last with first.
+                    let crossover = self.rng.next_f32() < self.config.crossover_probability;
+                    if crossover {
+                        let solution_split = self.rng.next_u32() as usize % self.size;
+
+                        // Just so the borrow checker is fine.
+                        let (mut left, mut right) = next_generation.split_at_mut(non_elite_generation_start + 1);
+                        let right_index = right.len() - 1;
+                        let left_index = left.len() - 1;
+                        for i in 0..solution_split {
+                            mem::swap(&mut left[left_index].queen_rows[i],
+                                      &mut right[right_index].queen_rows[i]);
+                        }
+                    }
+                }
+
+                for mut item in &mut next_generation[non_elite_generation_start..] {
+                    self.maybe_mutate(item);
+                }
+
+                current_generation = next_generation;
+
+                pending_generations -= 1;
+            }
+
+            current_generation.sort_by_key(|s| s.score());
+            let best_solution = current_generation.into_iter().next().unwrap();
+            let score = best_solution.score();
+            return Solution::new(best_solution.queen_rows, score);
+        }
+    }
+}
+
 pub fn solve<T: NQueensStrategy>(n: usize,
                                  result_storage: *mut usize,
                                  callback: Option<JSCallback>,
@@ -525,7 +692,7 @@ pub fn solve<T: NQueensStrategy>(n: usize,
 }
 
 #[cfg(target_os = "emscripten")]
-#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing','_solve_n_queens_simulated_annealing','_solve_n_queens_local_beam_search'] -s RESERVED_FUNCTION_POINTERS=20"]
+#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing','_solve_n_queens_simulated_annealing','_solve_n_queens_local_beam_search','_solve_n_queens_genetic'] -s RESERVED_FUNCTION_POINTERS=20"]
 extern {}
 
 pub type JSCallback = extern "C" fn(positions: *const usize,
@@ -555,7 +722,6 @@ pub fn solve_n_queens_simulated_annealing(n: usize,
                                           initial_temperature: f32,
                                           cooling_factor: f32)
                                           -> usize {
-    println!("{} {}", initial_temperature, cooling_factor);
     let config = simulated_annealing::SimulatedAnnealingConfig {
         starting_temperature: initial_temperature,
         cooling_factor: cooling_factor,
@@ -573,6 +739,26 @@ pub fn solve_n_queens_local_beam_search(n: usize,
         state_count: state_count,
     };
     solve::<local_beam_search::LocalBeamSearch>(n, result_storage, cb, config)
+}
+
+#[no_mangle]
+pub fn solve_n_queens_genetic(n: usize,
+                              result_storage: *mut usize,
+                              cb: Option<JSCallback>,
+                              generation_size: usize,
+                              elitism_percent: f32,
+                              crossover_probability: f32,
+                              mutation_probability: f32,
+                              generation_count: usize)
+                              -> usize {
+    let config = genetic_algorithm::GeneticAlgorithmConfig {
+        generation_size: generation_size,
+        elitism: elitism_percent,
+        crossover_probability: crossover_probability,
+        mutation_probability: mutation_probability,
+        generation_count: generation_count,
+    };
+    solve::<genetic_algorithm::GeneticAlgorithm>(n, result_storage, cb, config)
 }
 
 fn main() { /* Intentionally empty */ }
