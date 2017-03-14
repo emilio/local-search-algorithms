@@ -59,12 +59,24 @@
 <div id="options">
   <label for="number-chooser">Choose queen count</label>
   <input type="number" id="number-chooser">
+  <select type="algorithm" id="algorithm-chooser">
+    <option value="constraint_propagation">Constraint Propagation</option>
+    <option value="hill_climbing">Hill Climbing</option>
+    <option value="simulated_annealing">Simulated Annealing</option>
+  </select>
+  <label>Simulated annealing: Initial temperature</label>
+  <input type="number" id="simulated-annealing-initial-temperature">
+  <label>Simulated annealing: Cooling factor</label>
+  <input type="range" min="0" max="100" step="0.01" id="simulated-annealing-cooling-factor">
   <button id="run">Go</button>
 </div>
 <script>
   var app = new Application(document.getElementById('grid'),
                             document.getElementById('score-board'),
                             document.getElementById('number-chooser'),
+                            document.getElementById('algorithm-chooser'),
+                            document.getElementById('simulated-annealing-initial-temperature'),
+                            document.getElementById('simulated-annealing-cooling-factor'),
                             document.getElementById('run'));
   app.run();
 </script>

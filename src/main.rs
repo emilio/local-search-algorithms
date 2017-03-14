@@ -48,101 +48,6 @@ pub trait NQueensStrategy: Sized {
     /// with the queen positions and the current score so far.
     fn solve_with_callback<F>(self, callback: F) -> Solution
         where F: FnMut(&[usize], usize);
-
-    /// Get the currently positioned queen rows.
-    fn queen_rows(&self) -> &[usize];
-
-    /// Get the size of the board.
-    fn size(&self) -> usize;
-
-    /// Returns true if a queen positioned at `one` could be hit by a queen
-    /// positioned at `other`.
-    fn can_position(&self,
-                    p1: (usize, usize),
-                    p2: (usize, usize))
-                    -> Result<(), PositionError> {
-        let (x1, y1) = p1;
-        let (x2, y2) = p2;
-
-        if x1 == x2 && y1 == y2 {
-            return Err(PositionError::Match);
-        }
-
-        if x1 == x2 {
-            return Err(PositionError::Column);
-        }
-
-        if y1 == y2 {
-            return Err(PositionError::Row);
-        }
-
-        let x_difference = (x1 as isize - x2 as isize).abs();
-        let y_difference = (y1 as isize - y2 as isize).abs();
-
-        if x_difference == y_difference {
-            return Err(PositionError::Diagonal);
-        }
-
-        Ok(())
-    }
-
-    fn can_hit(&self,
-               p1: (usize, usize),
-               p2: (usize, usize)) -> bool {
-        self.can_position(p1, p2).is_err()
-    }
-
-    /// Returns true if the current algorithm can't find a better solution,
-    /// because all the queens can't hit each other.
-    fn done(&self) -> bool {
-        let size = self.size();
-        let rows = self.queen_rows();
-
-        // Still unpositioned queens.
-        if size != rows.len() {
-            return false;
-        }
-
-        for i in 0..size {
-            for j in (i + 1)..size {
-                if self.can_hit((i, rows[i]), (j, rows[j])) {
-                    return false;
-                }
-            }
-        }
-
-        debug_assert!(self.score() == 0);
-        return true;
-    }
-
-    /// Returns the number of pairs of queens that can hit each other.
-    fn score(&self) -> usize {
-        let rows = self.queen_rows();
-
-        let mut score = 0;
-
-        for i in 0..rows.len() {
-            for j in (i + 1)..rows.len() {
-                if self.can_hit((i, rows[i]), (j, rows[j])) {
-                    score += 1;
-                }
-            }
-        }
-
-        score
-    }
-
-    fn queen_can_be_positioned_at(&self,
-                                  pos: (usize, usize))
-                                  -> bool {
-        for (x, &y) in self.queen_rows().iter().enumerate() {
-            if self.can_position(pos, (x, y)).is_err() {
-                return false;
-            }
-        }
-
-        true
-    }
 }
 
 pub mod constraint_propagation {
@@ -150,23 +55,16 @@ pub mod constraint_propagation {
 
     /// A constraint-propagation solution to the n-queens challenge.
     pub struct ConstraintPropagation {
-        size: usize,
-        /// NOTE: We already know the row they are, because all the queens must
-        /// necessarily be in a different one.
-        queen_rows: Vec<usize>,
+        base: GenericChallengeState,
     }
 
     impl ConstraintPropagation {
-        fn dimension(&self) -> usize {
-            self.size
-        }
-
         /// Tries to position the next queen at row `row`, or any of the
         /// following columns.
         fn position_next_queen_from_row(&self, mut row: usize)
                                         -> Result<usize, ()> {
-            while row < self.size {
-                if self.queen_can_be_positioned_at((self.queen_rows.len(), row)) {
+            while row < self.base.size {
+                if self.base.queen_can_be_positioned_at((self.base.queen_rows.len(), row)) {
                     return Ok(row);
                 }
                 row += 1;
@@ -180,31 +78,27 @@ pub mod constraint_propagation {
         /// No configuration needed.
         type Config = ();
 
-        fn new(dimensions: usize, _: ()) -> Self {
+        fn new(size: usize, _: ()) -> Self {
             ConstraintPropagation {
-                size: dimensions,
-                queen_rows: Vec::with_capacity(dimensions),
+                base: GenericChallengeState::unpositioned(size),
             }
         }
-
-        fn queen_rows(&self) -> &[usize] { &self.queen_rows }
-        fn size(&self) -> usize { self.size }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
             where F: FnMut(&[usize], usize),
         {
             let mut start_search_at = 0;
-            while self.queen_rows.len() != self.size {
+            while self.base.queen_rows.len() != self.base.size {
                 match self.position_next_queen_from_row(start_search_at) {
                     Ok(pos) => {
-                        self.queen_rows.push(pos);
-                        callback(&self.queen_rows, 0);
+                        self.base.queen_rows.push(pos);
+                        callback(&self.base.queen_rows, 0);
                         start_search_at = 0;
                     }
                     Err(()) => {
-                        match self.queen_rows.pop() {
+                        match self.base.queen_rows.pop() {
                             Some(row) => {
-                                callback(&self.queen_rows, 0);
+                                callback(&self.base.queen_rows, 0);
                                 start_search_at = row + 1;
                             }
                             // Not a single solution.
@@ -214,8 +108,8 @@ pub mod constraint_propagation {
                 }
             }
 
-            let score = self.score();
-            Solution::new(self.queen_rows, score)
+            let score = self.base.score();
+            Solution::new(self.base.queen_rows, score)
         }
     }
 
@@ -267,13 +161,12 @@ pub mod constraint_propagation {
 pub struct GenericChallengeState {
     size: usize,
     queen_rows: Vec<usize>,
-    rng: rand::OsRng,
 }
 
 impl GenericChallengeState {
-    pub fn new(size: usize) -> Self {
-        use rand::Rng;
-        let mut rng = rand::OsRng::new().unwrap();
+    pub fn new<R>(size: usize, rng: &mut R) -> Self
+        where R: rand::Rng,
+    {
         let mut positions_pending =
             (0..size).into_iter().collect::<Vec<_>>();
 
@@ -291,13 +184,126 @@ impl GenericChallengeState {
         Self {
             size: size,
             queen_rows: queen_rows,
-            rng: rng,
         }
     }
 
-    pub fn random_queen_index(&mut self) -> usize {
-        use rand::Rng;
-        self.rng.next_u32() as usize % self.queen_rows.len()
+    pub fn unpositioned(size: usize) -> Self {
+        Self {
+            size: size,
+            queen_rows: vec![],
+        }
+    }
+
+    pub fn random_queen_index<R>(&mut self, rng: &mut R) -> usize
+        where R: rand::Rng,
+    {
+
+        rng.next_u32() as usize % self.queen_rows.len()
+    }
+
+    /// Returns two queens at random from the current ones, guaranteed to be
+    /// different.
+    pub fn get_two_random_queens<R>(&mut self, rng: &mut R) -> (usize, usize)
+        where R: rand::Rng,
+    {
+        debug_assert!(self.queen_rows.len() > 1);
+
+        let queen_1 = self.random_queen_index(rng);
+        let mut queen_2 = self.random_queen_index(rng);
+        while queen_1 == queen_2 {
+            queen_2 = self.random_queen_index(rng);
+        }
+
+        (queen_1, queen_2)
+    }
+
+    /// Returns true if a queen positioned at `one` could be hit by a queen
+    /// positioned at `other`.
+    fn can_position(&self,
+                    p1: (usize, usize),
+                    p2: (usize, usize))
+                    -> Result<(), PositionError> {
+        let (x1, y1) = p1;
+        let (x2, y2) = p2;
+
+        if x1 == x2 && y1 == y2 {
+            return Err(PositionError::Match);
+        }
+
+        if x1 == x2 {
+            return Err(PositionError::Column);
+        }
+
+        if y1 == y2 {
+            return Err(PositionError::Row);
+        }
+
+        let x_difference = (x1 as isize - x2 as isize).abs();
+        let y_difference = (y1 as isize - y2 as isize).abs();
+
+        if x_difference == y_difference {
+            return Err(PositionError::Diagonal);
+        }
+
+        Ok(())
+    }
+
+    fn can_hit(&self,
+               p1: (usize, usize),
+               p2: (usize, usize)) -> bool {
+        self.can_position(p1, p2).is_err()
+    }
+
+    /// Returns true if the current algorithm can't find a better solution,
+    /// because all the queens can't hit each other.
+    fn done(&self) -> bool {
+        let size = self.size;
+        let rows = &self.queen_rows;
+
+        // Still unpositioned queens.
+        if size != rows.len() {
+            return false;
+        }
+
+        for i in 0..size {
+            for j in (i + 1)..size {
+                if self.can_hit((i, rows[i]), (j, rows[j])) {
+                    return false;
+                }
+            }
+        }
+
+        debug_assert!(self.score() == 0);
+        return true;
+    }
+
+    /// Returns the number of pairs of queens that can hit each other.
+    fn score(&self) -> usize {
+        let rows = &self.queen_rows;
+
+        let mut score = 0;
+
+        for i in 0..rows.len() {
+            for j in (i + 1)..rows.len() {
+                if self.can_hit((i, rows[i]), (j, rows[j])) {
+                    score += 1;
+                }
+            }
+        }
+
+        score
+    }
+
+    fn queen_can_be_positioned_at(&self,
+                                  pos: (usize, usize))
+                                  -> bool {
+        for (x, &y) in self.queen_rows.iter().enumerate() {
+            if self.can_position(pos, (x, y)).is_err() {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -306,6 +312,7 @@ pub mod hill_climbing {
 
     pub struct HillClimbing {
         base: GenericChallengeState,
+        rng: rand::OsRng,
     }
 
     impl NQueensStrategy for HillClimbing {
@@ -313,37 +320,32 @@ pub mod hill_climbing {
         type Config = ();
 
         fn new(size: usize, _: ()) -> Self {
+            let mut rng = rand::OsRng::new().unwrap();
+            let base = GenericChallengeState::new(size, &mut rng);
             Self {
-                base: GenericChallengeState::new(size),
+                base: base,
+                rng: rng,
             }
         }
-
-        fn queen_rows(&self) -> &[usize] { &self.base.queen_rows }
-        fn size(&self) -> usize { self.base.size }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
             where F: FnMut(&[usize], usize),
         {
-            use std::mem;
             const MAX_ITERATIONS_WITHOUT_IMPROVEMENT: usize = 1000;
 
-            let mut current_score = self.score();
+            let mut current_score = self.base.score();
             let mut iterations_without_improvement = 0;
 
-            callback(&self.queen_rows(), current_score);
+            callback(&self.base.queen_rows, current_score);
 
             while current_score != 0 &&
                   iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT {
-                let mut queen_1 = self.base.random_queen_index();
-                let mut queen_2 = self.base.random_queen_index();
-                while queen_1 == queen_2 {
-                    queen_2 = self.base.random_queen_index();
-                }
+                let (queen_1, queen_2) = self.base.get_two_random_queens(&mut self.rng);
 
                 // Swap them, and check score.
                 self.base.queen_rows.swap(queen_1, queen_2);
 
-                let score = self.score();
+                let score = self.base.score();
                 if score < current_score {
                     // Yay, an improvement! Let's leave the stuff as-is :)
                     iterations_without_improvement = 0;
@@ -359,41 +361,113 @@ pub mod hill_climbing {
             Solution::new(self.base.queen_rows, current_score)
         }
     }
-
 }
 
 pub mod simulated_annealing {
     use super::*;
 
     pub struct SimulatedAnnealingConfig {
-        starting_temperature: usize,
-        cooling_factor: f32,
+        pub starting_temperature: f32,
+        pub cooling_factor: f32,
     }
 
     pub struct SimulatedAnnealing {
         base: GenericChallengeState,
-        temperature: usize,
+        rng: rand::OsRng,
+        temperature: f32,
         cooling_factor: f32,
+    }
+
+    impl SimulatedAnnealing {
+        fn should_accept(&mut self, old_score: usize, new_score: usize) -> bool {
+            use rand::Rng;
+            debug_assert!(old_score <= new_score);
+            if self.temperature <= 1.0 {
+                return false;
+            }
+
+            ((new_score - old_score) as f32 / self.temperature).exp() > self.rng.next_f32()
+        }
     }
 
     impl NQueensStrategy for SimulatedAnnealing {
         type Config = SimulatedAnnealingConfig;
 
         fn new(size: usize, config: Self::Config) -> Self {
+            let mut rng = rand::OsRng::new().unwrap();
+            let base = GenericChallengeState::new(size, &mut rng);
             SimulatedAnnealing {
-                base: GenericChallengeState::new(size),
+                base: base,
+                rng: rng,
                 temperature: config.starting_temperature,
                 cooling_factor: config.cooling_factor,
             }
         }
 
-        fn queen_rows(&self) -> &[usize] { &self.base.queen_rows }
-        fn size(&self) -> usize { self.base.size }
+        fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
+            where F: FnMut(&[usize], usize),
+        {
+            const MAX_ITERATIONS_WITHOUT_IMPROVEMENT: usize = 1000;
+
+            let mut score = self.base.score();
+            callback(&self.base.queen_rows, score);
+
+            let mut iterations_without_improvement = 0;
+            while score != 0 &&
+                  (self.temperature >= 1. ||
+                   iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT) {
+                let (queen_1, queen_2) = self.base.get_two_random_queens(&mut self.rng);
+
+                self.base.queen_rows.swap(queen_1, queen_2);
+
+                let new_score = self.base.score();
+                if new_score < score || self.should_accept(score, new_score) {
+                    score = new_score;
+                    // This is fiddly, but this only really matters when the
+                    // system is already cooled down, so it's fine.
+                    iterations_without_improvement = 0;
+                    callback(&self.base.queen_rows, score);
+                } else {
+                    iterations_without_improvement += 1;
+                    // Back to where we were.
+                    self.base.queen_rows.swap(queen_1, queen_2);
+                }
+
+                // Cool the system down.
+                self.temperature *= 1. - self.cooling_factor;
+            }
+
+            Solution::new(self.base.queen_rows, score)
+        }
+    }
+}
+
+mod local_beam_search {
+    use super::*;
+
+    struct LocalBeamSearchConfig {
+        state_count: usize,
+    }
+
+    struct LocalBeamSearch {
+        state_count: usize,
+        rng: rand::OsRng,
+    }
+
+    impl NQueensStrategy for LocalBeamSearch {
+        type Config = LocalBeamSearchConfig;
+
+        fn new(size: usize, config: Self::Config) -> Self {
+            Self {
+                state_count: config.state_count,
+                rng: rand::OsRng::new().unwrap(),
+            }
+        }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
             where F: FnMut(&[usize], usize),
         {
-            unimplemented!();
+            unimplemented!()
         }
     }
 }
@@ -424,7 +498,7 @@ pub fn solve<T: NQueensStrategy>(n: usize,
 }
 
 #[cfg(target_os = "emscripten")]
-#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing'] -s RESERVED_FUNCTION_POINTERS=20"]
+#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing','_solve_n_queens_simulated_annealing'] -s RESERVED_FUNCTION_POINTERS=20"]
 extern {}
 
 pub type JSCallback = extern "C" fn(positions: *const usize,
@@ -445,6 +519,21 @@ pub fn solve_n_queens_hill_climbing(n: usize,
                                     cb: Option<JSCallback>)
                                     -> usize {
     solve::<hill_climbing::HillClimbing>(n, result_storage, cb, ())
+}
+
+#[no_mangle]
+pub fn solve_n_queens_simulated_annealing(n: usize,
+                                          result_storage: *mut usize,
+                                          cb: Option<JSCallback>,
+                                          initial_temperature: f32,
+                                          cooling_factor: f32)
+                                          -> usize {
+    println!("{} {}", initial_temperature, cooling_factor);
+    let config = simulated_annealing::SimulatedAnnealingConfig {
+        starting_temperature: initial_temperature,
+        cooling_factor: cooling_factor,
+    };
+    solve::<simulated_annealing::SimulatedAnnealing>(n, result_storage, cb, config)
 }
 
 fn main() { /* Intentionally empty */ }

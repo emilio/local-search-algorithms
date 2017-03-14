@@ -6,15 +6,25 @@ class Solution {
               public score: number) {}
 }
 
+class AlgorithmConfig {
+  constructor(public name: string,
+              public extra_args: number[]) {}
+}
+
 class ASMInterface {
   constructor() {}
 
-  solveHillClimbing(n: number,
-                    stepCallback?: (state: Uint32Array, score: number) => void
-                   ) : Uint32Array {
-    if (!FFI_CACHE.solve_n_queens_hill_climbing) {
-      FFI_CACHE.solve_n_queens_hill_climbing =
-        Module.cwrap('solve_n_queens_hill_climbing', 'number', ['number', 'number']);
+  solve(n: number,
+        name: string,
+        stepCallback?: (state: Uint32Array, score: number) => void
+        ...args: number[]) : Uint32Array {
+    name = "solve_n_queens_" + name;
+    if (!FFI_CACHE[name]) {
+      let arg_kinds = ['number', 'number'];
+      for (let arg of args)
+        arg_kinds.push('number');
+      FFI_CACHE[name]=
+        Module.cwrap(name, 'number', arg_kinds);
     }
 
     let asmCallback = 0;
@@ -31,7 +41,7 @@ class ASMInterface {
     let mem = Module._malloc((n + 1) * 4);
 
     let solutionScore =
-      FFI_CACHE.solve_n_queens_hill_climbing(n, mem, asmCallback);
+      FFI_CACHE[name](n, mem, asmCallback, ...args);
 
     let resultLen = Module.getValue(mem, 'i32');
     let rows = new Uint32Array(resultLen);
@@ -59,6 +69,9 @@ class Application {
   constructor(public grid: HTMLDivElement,
               public scoreBoard: HTMLElement,
               public numberChooser: HTMLInputElement,
+              public algorithmChooser: HTMLSelectElement,
+              public simulatedAnnealingInitialTemperature: HTMLInputElement,
+              public simulatedAnnealingCoolingFactor: HTMLInputElement,
               public runButton: HTMLElement) {
     this.asmInterface = new ASMInterface();
   }
@@ -69,12 +82,37 @@ class Application {
     })
   }
 
+  currentAlgorithm() : AlgorithmConfig {
+    let name = this.algorithmChooser.options[this.algorithmChooser.selectedIndex].value;
+    let args = [];
+    switch (name) {
+      case "hill_climbing":
+      case "simulated_annealing":
+      case "constraint_propagation":
+        break;
+      default:
+        return null;
+    }
+
+    if (name == "simulated_annealing") {
+      args.push(this.simulatedAnnealingInitialTemperature.valueAsNumber)
+      args.push(
+        Math.max(0,
+          Math.min(1,
+            this.simulatedAnnealingCoolingFactor.valueAsNumber / 100)));
+    }
+
+    return new AlgorithmConfig(name, args);
+  }
+
   async runWithCurrentState() {
     const count = this.numberChooser.valueAsNumber;
     this.grid.classList.add('no-solution');
     this.grid.innerHTML = "";
     this.scoreBoard.innerHTML = "";
-    if (count < 0)
+    let algorithmConfig = this.currentAlgorithm();
+
+    if (count < 0 || !algorithmConfig)
       return;
     this.grid.classList.remove('no-solution');
     let items: Array<HTMLDivElement> = new Array(count * count);
@@ -103,9 +141,9 @@ class Application {
     // being said, I might not fix it if not needed.
     let steps = new Array<Solution>();
 
-    this.asmInterface.solveHillClimbing(count, function(queens, score) {
+    this.asmInterface.solve(count, algorithmConfig.name, function(queens, score) {
       steps.push(new Solution(queens, score));
-    });
+    }, ...algorithmConfig.extra_args);
 
     let latestQueens = null;
     for (step of steps) {
