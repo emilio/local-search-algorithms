@@ -21,6 +21,11 @@ Some known gotchas:
 
  * Could be more memory efficient (just read the TODOs in `src/main.rs`).
 
+ * Should be more modular. I did it initially with `Makefile`s and calling
+   `rustc` by hand, but `cargo` and dependencies just worked out of the box, and
+   `build.rs`'s flexibility is all I needed! Anyway, that's the explanation for
+   the monofile.
+
 ## Requirements
 
  * [Rust nightly](http://rustup.rs/).
