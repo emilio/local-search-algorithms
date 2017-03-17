@@ -709,7 +709,7 @@ pub fn solve<T: NQueensStrategy>(n: usize,
 }
 
 #[cfg(target_os = "emscripten")]
-#[link_args = "-s EXPORTED_FUNCTIONS=['_solve_n_queens_constraint_propagation','_solve_n_queens_hill_climbing','_solve_n_queens_simulated_annealing','_solve_n_queens_local_beam_search','_solve_n_queens_genetic'] -s RESERVED_FUNCTION_POINTERS=20"]
+#[link_args = "-s RESERVED_FUNCTION_POINTERS=20"] // Only needs one r/n, really.
 extern {}
 
 pub type JSCallback = extern "C" fn(positions: *const usize,
