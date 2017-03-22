@@ -6,6 +6,11 @@
 <style>
   html, body { margin: 0; padding: 0 }
 
+  html {
+    font-size: 1em;
+    font-family: sans-serif;
+  }
+
   #grid {
     display: grid;
     grid-gap: 5px;
@@ -38,61 +43,124 @@
 
   #grid.no-solution {
     display: block;
-    background: rgba(255, 0, 0, .5);
+    background: #ffcccc;
     font-size: 2.5em;
   }
 
   #grid.no-solution::before {
-    position: absolute;
+    position: relative;
     display: block;
     content: "No solution";
     text-align: center;
     width: 100%;
     top: calc(50% - 0.5em);
   }
+
+  #options, #score {
+    padding: 1em;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    width: 100%;
+    max-width: 900px;
+    display: flex;
+    margin: 1em auto;
+  }
+
+  #score {
+    position: fixed;
+    z-index: 1;
+    background: white;
+    top: 10px;
+    left: 10px;
+    max-width: 200px;
+    margin: 0;
+    display: block;
+    text-align: center;
+  }
+
+  #score-board, #step-count {
+    font-size: 1.5em;
+    font-weight: bold;
+    text-align: center;
+  }
+
+  #options button {
+    display: block;
+    padding: .5em;
+    border-radius: 3px;
+    width: 100%;
+    border: 1px solid #ccc;
+  }
+
+  #options > div {
+    flex: 1;
+  }
+
+  #options h2, #options h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #ddd;
+  }
+
+  label { display: block; }
 </style>
+<div id="score">
+  Score (lower is better): <div id="score-board">0</div>
+  Step count: <div id="step-count">0</div>
+</div>
 <div id="grid" class="no-solution">
 </div>
-<div>
-  Score (lower is better): <span id="score-board"></span>
-</div>
 <div id="options">
-  <label for="number-chooser">Choose queen count</label>
-  <input type="number" id="number-chooser">
-  <select type="algorithm" id="algorithm-chooser">
-    <option value="constraint_propagation">Constraint Propagation</option>
-    <option value="hill_climbing">Hill Climbing</option>
-    <option value="simulated_annealing">Simulated Annealing</option>
-    <option value="local_beam_search">Local Beam Search</option>
-    <option value="genetic">Genetic</option>
-  </select>
   <div>
-    <label>Simulated annealing: Initial temperature</label>
+    <h3>Common</h3>
+    <label for="number-chooser">Queen count</label>
+    <input type="number" id="number-chooser">
+    <label for="animation-enabled">Enable animation</label>
+    <input type="checkbox" id="animation-enabled" checked>
+    <label for="algorithm">Algorithm</label>
+    <select type="algorithm" id="algorithm-chooser">
+      <option value="constraint_propagation">Constraint Propagation</option>
+      <option value="hill_climbing">Hill Climbing</option>
+      <option value="simulated_annealing">Simulated Annealing</option>
+      <option value="local_beam_search">Local Beam Search</option>
+      <option value="genetic">Genetic</option>
+    </select>
+  </div>
+  <div data-algorithm="simulated_annealing">
+    <h3>Simulated annealing</h3>
+    <label for="simulated-annealing-initial-temperature">Initial temperature</label>
     <input type="number" id="simulated-annealing-initial-temperature">
-    <label>Simulated annealing: Cooling factor</label>
+    <label>Cooling factor</label>
     <input type="range" min="0" max="100" step="0.01" id="simulated-annealing-cooling-factor">
   </div>
-  <div>
-    <label>Local Beam Search: State count</label>
+  <div data-algorithm="local_beam_search">
+    <h3>Local Beam Search</h3>
+    <label>State count</label>
     <input type="number" id="local-beam-search-state-count">
   </div>
-  <div>
-    <label>Genetic algorithm: Generation size</label>
+  <div data-algorithm="genetic">
+    <h3>Genetic algorithm</h3>
+    <label for="genetic-generation-size">Generation size</label>
     <input type="number" id="genetic-generation-size">
-    <label>Genetic algorithm: Elitism %</label>
+    <label for="genetic-elitism-percent">Elitism %</label>
     <input type="range" min="0" max="100" step="0.01" id="genetic-elitism-percent">
-    <label>Genetic algorithm: Crossover Probability</label>
+    <label for="genetic-crossover-probability">Crossover Probability</label>
     <input type="range" min="0" max="100" step="0.01" id="genetic-crossover-probability">
-    <label>Genetic algorithm: Mutation Probability</label>
+    <label for="genetic-mutation-probability">Mutation Probability</label>
     <input type="range" min="0" max="100" step="0.01" id="genetic-mutation-probability">
-    <label>Genetic algorithm: Generation count</label>
+    <label for="genetic-generation-count">Generation count</label>
     <input type="number" id="genetic-generation-count">
   </div>
-  <button id="run">Go</button>
+  <div>
+    <h3>Ready?</h3>
+    <button id="run">Go!</button>
+  </div>
 </div>
 <script>
   var app = new Application(document.getElementById('grid'),
                             document.getElementById('score-board'),
+                            document.getElementById('step-count'),
+                            document.getElementById('options'),
+                            document.getElementById('animation-enabled'),
                             document.getElementById('number-chooser'),
                             document.getElementById('algorithm-chooser'),
                             document.getElementById('simulated-annealing-initial-temperature'),

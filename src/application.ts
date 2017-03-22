@@ -49,7 +49,6 @@ class ASMInterface {
         let state = new Uint32Array(len);
         for (let i = 0; i < len; ++i)
           state[i] = Module.getValue(ptr + i * 4, 'i32');
-        console.log(state, score);
         stepCallback(state, score);
       });
     }
@@ -84,6 +83,9 @@ class Application {
 
   constructor(public grid: HTMLDivElement,
               public scoreBoard: HTMLElement,
+              public stepCount: HTMLElement,
+              public config: HTMLElement,
+              public animationEnabled: HTMLInputElement,
               public numberChooser: HTMLInputElement,
               public algorithmChooser: HTMLSelectElement,
               public simulatedAnnealingInitialTemperature: HTMLInputElement,
@@ -102,6 +104,28 @@ class Application {
     this.runButton.addEventListener('click', e => {
       this.runWithCurrentState();
     })
+
+    this.algorithmChooser.addEventListener('change', e => {
+      this.refreshInterface();
+    })
+
+    this.refreshInterface();
+  }
+
+  refreshInterface() {
+    let algos = this.config.querySelectorAll('div[data-algorithm]');
+    let current_chosen_algo =
+      this.algorithmChooser.selectedIndex >= 0
+        ? this.algorithmChooser.options[this.algorithmChooser.selectedIndex].value
+        : null;
+    for (let i = 0; i < algos.length; ++i) {
+      if (!current_chosen_algo ||
+          algos[i].getAttribute('data-algorithm') != current_chosen_algo) {
+        algos[i].style.display = "none";
+      } else {
+        algos[i].style.display = "";
+      }
+    }
   }
 
   currentAlgorithm() : AlgorithmConfig {
@@ -147,6 +171,7 @@ class Application {
 
     if (count < 0 || !algorithmConfig)
       return;
+
     this.grid.classList.remove('no-solution');
     let items: Array<HTMLDivElement> = new Array(count * count);
     for (let i = 0; i < count * count; ++i) {
@@ -165,7 +190,7 @@ class Application {
       fragment.appendChild(item);
     this.grid.appendChild(fragment);
 
-    let scoreBoard = this.scoreBoard;
+    let animationEnabled = this.animationEnabled.checked;
 
     // FIXME(emilio): This gets all the steps in memory just to avoid using
     // an iterator pattern from Rust.
@@ -174,7 +199,13 @@ class Application {
     // being said, I might not fix it if not needed.
     let steps = new Array<Solution>();
 
+    let stepCount = 0;
+
     this.asmInterface.solve(count, algorithmConfig.name, function(queens, score) {
+      if (!animationEnabled) {
+        steps.splice(0, steps.length);
+        ++stepCount;
+      }
       steps.push(new Solution(queens, score));
     }, ...algorithmConfig.extra_args);
 
@@ -189,7 +220,8 @@ class Application {
       for (let i = 0; i < queens.length; ++i)
         items[i + queens[i] * count].classList.add('queen');
 
-      scoreBoard.innerHTML = step.score;
+      this.scoreBoard.innerHTML = step.score;
+      this.stepCount.innerHTML = ++stepCount;
       latestQueens = queens;
       await waitABit();
     }
