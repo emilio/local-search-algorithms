@@ -536,9 +536,11 @@ pub mod genetic_algorithm {
     impl GeneticAlgorithm {
         fn maybe_mutate(&mut self, state: &mut GenericChallengeState) {
             use rand::Rng;
-            if self.rng.next_f32() < self.config.mutation_probability {
-                let (one, other) = state.get_two_random_queens(&mut self.rng);
-                state.queen_rows.swap(one, other);
+            for _ in 0..self.size {
+                if self.rng.next_f32() < self.config.mutation_probability {
+                    let (one, other) = state.get_two_random_queens(&mut self.rng);
+                    state.queen_rows.swap(one, other);
+                }
             }
         }
     }
