@@ -29,7 +29,7 @@ Some known gotchas:
 ## Requirements
 
  * [Rust nightly](http://rustup.rs/).
- * TypeScript compiler: `nmp install -g typescript`.
+ * TypeScript compiler: `npm install -g typescript`.
  * Emscripten toolchain ([Varies by system][emscripten]).
 
 To test the code you only need Rust nightly. Running `cargo test` should work.
