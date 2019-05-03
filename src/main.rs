@@ -641,7 +641,7 @@ pub mod genetic_algorithm {
                     let crossover = self.rng.next_f32() < self.config.crossover_probability;
                     if crossover {
                         let solution_split = self.rng.next_u32() as usize % self.size;
-                        let (mut left, mut right) = next_generation.split_at_mut(i + 1);
+                        let (left, right) = next_generation.split_at_mut(i + 1);
                         for j in 0..solution_split {
                             mem::swap(&mut right[0].queen_rows[j],
                                       &mut left[i].queen_rows[j]);
@@ -656,7 +656,7 @@ pub mod genetic_algorithm {
                         let solution_split = self.rng.next_u32() as usize % self.size;
 
                         // Just so the borrow checker is fine.
-                        let (mut left, mut right) = next_generation.split_at_mut(non_elite_generation_start + 1);
+                        let (left, right) = next_generation.split_at_mut(non_elite_generation_start + 1);
                         let right_index = right.len() - 1;
                         let left_index = left.len() - 1;
                         for i in 0..solution_split {
@@ -666,7 +666,7 @@ pub mod genetic_algorithm {
                     }
                 }
 
-                for mut item in &mut next_generation[non_elite_generation_start..] {
+                for item in &mut next_generation[non_elite_generation_start..] {
                     self.maybe_mutate(item);
                 }
 
@@ -697,7 +697,7 @@ pub fn solve<T: NQueensStrategy>(n: usize,
         }
     });
 
-    let mut storage = unsafe { slice::from_raw_parts_mut(result_storage, n + 1) };
+    let storage = unsafe { slice::from_raw_parts_mut(result_storage, n + 1) };
     storage[0] = solution.queen_rows.len();
 
     // TODO(emilio): This is inconsistent with the data passed to the callback.
