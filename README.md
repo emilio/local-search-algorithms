@@ -37,8 +37,8 @@ To test the code you only need Rust nightly. Running `cargo test` should work.
 For running it:
 
 ```console
-$ cargo build --target asmjs-unknown-emscripten
-$ firefox ./target/asmjs-unknown-emscripten/debug/index.html
+$ cargo build --target asmjs-unknown-emscripten --release
+$ firefox ./target/asmjs-unknown-emscripten/release/index.html
 ```
 
 [emscripten]: https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html
