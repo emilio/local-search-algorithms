@@ -62,7 +62,8 @@ pub trait NQueensStrategy: Sized {
     /// and additionally runs `callback` on each step the positions changed,
     /// with the queen positions and the current score so far.
     fn solve_with_callback<F>(self, callback: F) -> Solution
-        where F: FnMut(&[usize], usize);
+    where
+        F: FnMut(&[usize], usize);
 }
 
 pub mod constraint_propagation {
@@ -76,10 +77,12 @@ pub mod constraint_propagation {
     impl ConstraintPropagation {
         /// Tries to position the next queen at row `row`, or any of the
         /// following columns.
-        fn position_next_queen_from_row(&self, mut row: usize)
-                                        -> Result<usize, ()> {
+        fn position_next_queen_from_row(&self, mut row: usize) -> Result<usize, ()> {
             while row < self.base.size {
-                if self.base.queen_can_be_positioned_at((self.base.queen_rows.len(), row)) {
+                if self
+                    .base
+                    .queen_can_be_positioned_at((self.base.queen_rows.len(), row))
+                {
                     return Ok(row);
                 }
                 row += 1;
@@ -100,7 +103,8 @@ pub mod constraint_propagation {
         }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
-            where F: FnMut(&[usize], usize),
+        where
+            F: FnMut(&[usize], usize),
         {
             let mut start_search_at = 0;
             while self.base.queen_rows.len() != self.base.size {
@@ -181,17 +185,16 @@ pub struct GenericChallengeState {
 
 impl GenericChallengeState {
     pub fn new<R>(size: usize, rng: &mut R) -> Self
-        where R: rand::Rng,
+    where
+        R: rand::Rng,
     {
-        let mut positions_pending =
-            (0..size).into_iter().collect::<Vec<_>>();
+        let mut positions_pending = (0..size).into_iter().collect::<Vec<_>>();
 
         let mut queen_rows = vec![0; size];
 
         // Distribute the initial positions randomly.
         while !positions_pending.is_empty() {
-            let chosen =
-                rng.next_u32() as usize % positions_pending.len();
+            let chosen = rng.next_u32() as usize % positions_pending.len();
 
             let position = positions_pending.remove(chosen);
             queen_rows[positions_pending.len()] = position;
@@ -211,16 +214,17 @@ impl GenericChallengeState {
     }
 
     pub fn random_queen_index<R>(&mut self, rng: &mut R) -> usize
-        where R: rand::Rng,
+    where
+        R: rand::Rng,
     {
-
         rng.next_u32() as usize % self.queen_rows.len()
     }
 
     /// Returns two queens at random from the current ones, guaranteed to be
     /// different.
     pub fn get_two_random_queens<R>(&mut self, rng: &mut R) -> (usize, usize)
-        where R: rand::Rng,
+    where
+        R: rand::Rng,
     {
         debug_assert!(self.queen_rows.len() > 1);
 
@@ -235,10 +239,7 @@ impl GenericChallengeState {
 
     /// Returns true if a queen positioned at `one` could be hit by a queen
     /// positioned at `other`.
-    fn can_position(&self,
-                    p1: (usize, usize),
-                    p2: (usize, usize))
-                    -> Result<(), PositionError> {
+    fn can_position(&self, p1: (usize, usize), p2: (usize, usize)) -> Result<(), PositionError> {
         let (x1, y1) = p1;
         let (x2, y2) = p2;
 
@@ -264,9 +265,7 @@ impl GenericChallengeState {
         Ok(())
     }
 
-    fn can_hit(&self,
-               p1: (usize, usize),
-               p2: (usize, usize)) -> bool {
+    fn can_hit(&self, p1: (usize, usize), p2: (usize, usize)) -> bool {
         self.can_position(p1, p2).is_err()
     }
 
@@ -287,9 +286,7 @@ impl GenericChallengeState {
         score
     }
 
-    fn queen_can_be_positioned_at(&self,
-                                  pos: (usize, usize))
-                                  -> bool {
+    fn queen_can_be_positioned_at(&self, pos: (usize, usize)) -> bool {
         for (x, &y) in self.queen_rows.iter().enumerate() {
             if self.can_position(pos, (x, y)).is_err() {
                 return false;
@@ -322,7 +319,8 @@ pub mod hill_climbing {
         }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
-            where F: FnMut(&[usize], usize),
+        where
+            F: FnMut(&[usize], usize),
         {
             const MAX_ITERATIONS_WITHOUT_IMPROVEMENT: usize = 1000;
 
@@ -331,8 +329,9 @@ pub mod hill_climbing {
 
             callback(&self.base.queen_rows, current_score);
 
-            while current_score != 0 &&
-                  iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT {
+            while current_score != 0
+                && iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT
+            {
                 let (queen_1, queen_2) = self.base.get_two_random_queens(&mut self.rng);
 
                 // Swap them, and check score.
@@ -398,7 +397,8 @@ pub mod simulated_annealing {
         }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
-            where F: FnMut(&[usize], usize),
+        where
+            F: FnMut(&[usize], usize),
         {
             const MAX_ITERATIONS_WITHOUT_IMPROVEMENT: usize = 1000;
 
@@ -406,9 +406,10 @@ pub mod simulated_annealing {
             callback(&self.base.queen_rows, score);
 
             let mut iterations_without_improvement = 0;
-            while score != 0 &&
-                  (self.temperature >= 1. ||
-                   iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT) {
+            while score != 0
+                && (self.temperature >= 1.
+                    || iterations_without_improvement <= MAX_ITERATIONS_WITHOUT_IMPROVEMENT)
+            {
                 let (queen_1, queen_2) = self.base.get_two_random_queens(&mut self.rng);
 
                 self.base.queen_rows.swap(queen_1, queen_2);
@@ -460,7 +461,8 @@ pub mod local_beam_search {
         }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
-            where F: FnMut(&[usize], usize),
+        where
+            F: FnMut(&[usize], usize),
         {
             use std::mem;
 
@@ -490,8 +492,7 @@ pub mod local_beam_search {
                 }
 
                 // Find all the successors to the current states, and push them.
-                let mut successors =
-                    Vec::with_capacity(states.len() * self.size);
+                let mut successors = Vec::with_capacity(states.len() * self.size);
 
                 for state in &states {
                     for i in 0..self.size {
@@ -555,17 +556,17 @@ pub mod genetic_algorithm {
         }
 
         fn solve_with_callback<F>(mut self, mut callback: F) -> Solution
-            where F: FnMut(&[usize], usize),
+        where
+            F: FnMut(&[usize], usize),
         {
-            use std::{cmp, mem};
             use rand::Rng;
+            use std::{cmp, mem};
 
             if self.config.generation_size == 0 {
                 return Solution::new(vec![], 0);
             }
 
-            let mut current_generation =
-                Vec::with_capacity(self.config.generation_size);
+            let mut current_generation = Vec::with_capacity(self.config.generation_size);
             for _ in 0..self.config.generation_size {
                 current_generation.push(GenericChallengeState::new(self.size, &mut self.rng))
             }
@@ -598,11 +599,9 @@ pub mod genetic_algorithm {
                 for score in &scores {
                     total_inverse_score += max_score - *score
                 }
-                let mut next_generation =
-                    Vec::with_capacity(self.config.generation_size);
+                let mut next_generation = Vec::with_capacity(self.config.generation_size);
 
-                let percent_per_individual =
-                    1.0f32 / current_generation.len() as f32;
+                let percent_per_individual = 1.0f32 / current_generation.len() as f32;
                 let mut percent_so_far = 0.0f32;
                 let mut non_elite_generation_start = 0;
                 while percent_so_far < self.config.elitism {
@@ -643,8 +642,7 @@ pub mod genetic_algorithm {
                         let solution_split = self.rng.next_u32() as usize % self.size;
                         let (left, right) = next_generation.split_at_mut(i + 1);
                         for j in 0..solution_split {
-                            mem::swap(&mut right[0].queen_rows[j],
-                                      &mut left[i].queen_rows[j]);
+                            mem::swap(&mut right[0].queen_rows[j], &mut left[i].queen_rows[j]);
                         }
                     }
                 }
@@ -656,12 +654,15 @@ pub mod genetic_algorithm {
                         let solution_split = self.rng.next_u32() as usize % self.size;
 
                         // Just so the borrow checker is fine.
-                        let (left, right) = next_generation.split_at_mut(non_elite_generation_start + 1);
+                        let (left, right) =
+                            next_generation.split_at_mut(non_elite_generation_start + 1);
                         let right_index = right.len() - 1;
                         let left_index = left.len() - 1;
                         for i in 0..solution_split {
-                            mem::swap(&mut left[left_index].queen_rows[i],
-                                      &mut right[right_index].queen_rows[i]);
+                            mem::swap(
+                                &mut left[left_index].queen_rows[i],
+                                &mut right[right_index].queen_rows[i],
+                            );
                         }
                     }
                 }
@@ -683,11 +684,12 @@ pub mod genetic_algorithm {
     }
 }
 
-pub fn solve<T: NQueensStrategy>(n: usize,
-                                 result_storage: *mut usize,
-                                 callback: Option<JSCallback>,
-                                 config: T::Config)
-                                 -> usize {
+pub fn solve<T: NQueensStrategy>(
+    n: usize,
+    result_storage: *mut usize,
+    callback: Option<JSCallback>,
+    config: T::Config,
+) -> usize {
     use std::slice;
 
     let challenge = T::new(n, config);
@@ -708,33 +710,34 @@ pub fn solve<T: NQueensStrategy>(n: usize,
     solution.score
 }
 
-pub type JSCallback = extern "C" fn(positions: *const usize,
-                                    len: usize,
-                                    score: usize);
+pub type JSCallback = extern "C" fn(positions: *const usize, len: usize, score: usize);
 
 #[no_mangle]
-pub fn solve_n_queens_constraint_propagation(n: usize,
-                                    result_storage: *mut usize,
-                                    cb: Option<JSCallback>)
-                                    -> usize {
+pub fn solve_n_queens_constraint_propagation(
+    n: usize,
+    result_storage: *mut usize,
+    cb: Option<JSCallback>,
+) -> usize {
     solve::<constraint_propagation::ConstraintPropagation>(n, result_storage, cb, ())
 }
 
 #[no_mangle]
-pub fn solve_n_queens_hill_climbing(n: usize,
-                                    result_storage: *mut usize,
-                                    cb: Option<JSCallback>)
-                                    -> usize {
+pub fn solve_n_queens_hill_climbing(
+    n: usize,
+    result_storage: *mut usize,
+    cb: Option<JSCallback>,
+) -> usize {
     solve::<hill_climbing::HillClimbing>(n, result_storage, cb, ())
 }
 
 #[no_mangle]
-pub fn solve_n_queens_simulated_annealing(n: usize,
-                                          result_storage: *mut usize,
-                                          cb: Option<JSCallback>,
-                                          initial_temperature: f32,
-                                          cooling_factor: f32)
-                                          -> usize {
+pub fn solve_n_queens_simulated_annealing(
+    n: usize,
+    result_storage: *mut usize,
+    cb: Option<JSCallback>,
+    initial_temperature: f32,
+    cooling_factor: f32,
+) -> usize {
     let config = simulated_annealing::SimulatedAnnealingConfig {
         starting_temperature: initial_temperature,
         cooling_factor: cooling_factor,
@@ -743,11 +746,12 @@ pub fn solve_n_queens_simulated_annealing(n: usize,
 }
 
 #[no_mangle]
-pub fn solve_n_queens_local_beam_search(n: usize,
-                                        result_storage: *mut usize,
-                                        cb: Option<JSCallback>,
-                                        state_count: usize)
-                                        -> usize {
+pub fn solve_n_queens_local_beam_search(
+    n: usize,
+    result_storage: *mut usize,
+    cb: Option<JSCallback>,
+    state_count: usize,
+) -> usize {
     let config = local_beam_search::LocalBeamSearchConfig {
         state_count: state_count,
     };
@@ -755,15 +759,16 @@ pub fn solve_n_queens_local_beam_search(n: usize,
 }
 
 #[no_mangle]
-pub fn solve_n_queens_genetic(n: usize,
-                              result_storage: *mut usize,
-                              cb: Option<JSCallback>,
-                              generation_size: usize,
-                              elitism_percent: f32,
-                              crossover_probability: f32,
-                              mutation_probability: f32,
-                              generation_count: usize)
-                              -> usize {
+pub fn solve_n_queens_genetic(
+    n: usize,
+    result_storage: *mut usize,
+    cb: Option<JSCallback>,
+    generation_size: usize,
+    elitism_percent: f32,
+    crossover_probability: f32,
+    mutation_probability: f32,
+    generation_count: usize,
+) -> usize {
     let config = genetic_algorithm::GeneticAlgorithmConfig {
         generation_size: generation_size,
         elitism: elitism_percent,
@@ -774,4 +779,6 @@ pub fn solve_n_queens_genetic(n: usize,
     solve::<genetic_algorithm::GeneticAlgorithm>(n, result_storage, cb, config)
 }
 
-fn main() { /* Intentionally empty */ }
+fn main() {
+    /* Intentionally empty */
+}
