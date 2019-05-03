@@ -45,7 +45,7 @@ class ASMInterface {
 
     let asmCallback = 0;
     if (stepCallback) {
-      asmCallback = Runtime.addFunction(function(ptr, len, score) {
+      asmCallback = addFunction(function(ptr, len, score) {
         let state = new Uint32Array(len);
         for (let i = 0; i < len; ++i)
           state[i] = Module.getValue(ptr + i * 4, 'i32');
@@ -64,7 +64,7 @@ class ASMInterface {
       rows[i] = Module.getValue(mem + (i + 1) * 4, 'i32');
 
     if (asmCallback)
-      Runtime.removeFunction(asmCallback);
+      removeFunction(asmCallback);
     Module._free(mem);
 
     return new Solution(rows, solutionScore);

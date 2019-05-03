@@ -1,0 +1,4 @@
+[target.asmjs-unknown-emscripten]
+rustflags = [
+  "-Clink-args=-s EXTRA_EXPORTED_RUNTIME_METHODS=['cwrap','getValue','addFunction','removeFunction','ccall'] -s RESERVED_FUNCTION_POINTERS=20",
+]

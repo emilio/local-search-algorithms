@@ -15,8 +15,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#![feature(link_args)]
-
 extern crate rand;
 
 pub enum PositionError {
@@ -709,10 +707,6 @@ pub fn solve<T: NQueensStrategy>(n: usize,
 
     solution.score
 }
-
-#[cfg(target_os = "emscripten")]
-#[link_args = "-s RESERVED_FUNCTION_POINTERS=20"] // Only needs one r/n, really.
-extern {}
 
 pub type JSCallback = extern "C" fn(positions: *const usize,
                                     len: usize,
